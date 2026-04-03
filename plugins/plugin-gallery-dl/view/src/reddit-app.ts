@@ -176,13 +176,27 @@ function renderMediaItem(
     video.className = "gallery-media-video";
     video.src = getFileUrl(file.path);
     video.controls = true;
+    video.muted = true;
+    video.playsInline = true;
     video.preload = "metadata";
-    if (file.name.includes(".gif.") || file.name.endsWith(".gif")) {
-      video.autoplay = true;
+    const isGif = file.name.includes(".gif.") || file.name.endsWith(".gif");
+    if (isGif) {
       video.loop = true;
-      video.muted = true;
-      video.playsInline = true;
     }
+    // Autoplay when visible, pause when scrolled away
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            video.play().catch(() => {});
+          } else {
+            video.pause();
+          }
+        }
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(video);
     item.appendChild(video);
   } else {
     const img = document.createElement("img");
