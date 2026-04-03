@@ -1,0 +1,17 @@
+{
+  "name": "plugin-archiveorg",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "deploy": "tsc && mkdir -p ../TheArchiver/plugins/plugin-archiveorg && cp dist/index.js manifest.json ../TheArchiver/plugins/plugin-archiveorg/",
+    "package": "tsc && mkdir -p dist/package && cp dist/index.js manifest.json dist/package/ && cd dist/package && zip -r ../archive-org.zip ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "@types/cheerio": "^0.22.35"
+  }
+}

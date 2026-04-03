@@ -1,0 +1,16 @@
+{
+  "name": "plugin-gallery-dl",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && node dist/manifest-gen.js && node view/build.js",
+    "build:view": "node view/build.js",
+    "deploy": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p ../TheArchiver/plugins/plugin-gallery-dl && cp dist/index.js dist/sites.js dist/settings.js manifest.json ../TheArchiver/plugins/plugin-gallery-dl/ && mkdir -p ../TheArchiver/plugins/plugin-gallery-dl/view && cp view/index.js ../TheArchiver/plugins/plugin-gallery-dl/view/",
+    "package": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && mkdir -p dist/package/view && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-gallery-dl.zip ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "name": "Socials",
+  "version": "1.1.0",
+  "description": "Download images, galleries, and metadata from social media platforms",
+  "author": "TheArchiver",
+  "urlPatterns": [
+    "https://reddit.com",
+    "https://www.reddit.com",
+    "https://old.reddit.com",
+    "https://bsky.app",
+    "https://x.com",
+    "https://twitter.com",
+    "https://www.twitter.com",
+    "https://mobile.twitter.com"
+  ],
+  "viewProvider": {
+    "viewId": "reddit-browser",
+    "label": "Social Browser",
+    "icon": "MessageSquare",
+    "entryPoint": "view/index.js"
+  },
+  "settings": [
+    {
+      "key": "save_directory",
+      "type": "string",
+      "label": "Save Directory",
+      "description": "Base folder name for saved social media content within the root directory",
+      "required": false,
+      "defaultValue": "Socials",
+      "sortOrder": 0
+    },
+    {
+      "key": "reddit_subfolder",
+      "type": "string",
+      "label": "Reddit Subfolder",
+      "description": "Subfolder name for Reddit content within the save directory",
+      "required": false,
+      "defaultValue": "Reddit",
+      "sortOrder": 1
+    },
+    {
+      "key": "subreddit_sort",
+      "type": "select",
+      "label": "Subreddit Sort",
+      "description": "How to sort posts when downloading from a subreddit",
+      "defaultValue": "hot",
+      "validation": {
+        "options": [
+          { "label": "Hot", "value": "hot" },
+          { "label": "New", "value": "new" },
+          { "label": "Top", "value": "top" },
+          { "label": "Rising", "value": "rising" }
+        ]
+      },
+      "sortOrder": 2
+    },
+    {
+      "key": "subreddit_time_filter",
+      "type": "select",
+      "label": "Top Posts Time Filter",
+      "description": "Time range for 'top' sort order",
+      "defaultValue": "all",
+      "validation": {
+        "options": [
+          { "label": "Past Hour", "value": "hour" },
+          { "label": "Past 24 Hours", "value": "day" },
+          { "label": "Past Week", "value": "week" },
+          { "label": "Past Month", "value": "month" },
+          { "label": "Past Year", "value": "year" },
+          { "label": "All Time", "value": "all" }
+        ]
+      },
+      "sortOrder": 3
+    },
+    {
+      "key": "subreddit_post_count",
+      "type": "number",
+      "label": "Reddit Posts to Download",
+      "description": "Number of posts to fetch from subreddits/profiles. -1 for max (~1000, Reddit limit)",
+      "defaultValue": 100,
+      "sortOrder": 4
+    },
+    {
+      "key": "save_metadata",
+      "type": "boolean",
+      "label": "Save Metadata",
+      "description": "Save post metadata (Post.nfo) and comments (Comments.json) alongside media files",
+      "defaultValue": true,
+      "sortOrder": 5
+    },
+    {
+      "key": "bluesky_subfolder",
+      "type": "string",
+      "label": "Bluesky Subfolder",
+      "description": "Subfolder name for Bluesky content within the save directory",
+      "required": false,
+      "defaultValue": "Bluesky",
+      "sortOrder": 10
+    },
+    {
+      "key": "bluesky_post_count",
+      "type": "number",
+      "label": "Bluesky Posts to Download",
+      "description": "Number of posts to fetch from a Bluesky profile. -1 for all available posts",
+      "defaultValue": 100,
+      "sortOrder": 11
+    },
+    {
+      "key": "twitter_subfolder",
+      "type": "string",
+      "label": "Twitter/X Subfolder",
+      "description": "Subfolder name for Twitter/X content within the save directory",
+      "required": false,
+      "defaultValue": "Twitter",
+      "sortOrder": 20
+    }
+  ]
+}

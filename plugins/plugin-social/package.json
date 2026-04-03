@@ -1,0 +1,16 @@
+{
+  "name": "plugin-social",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && node view/build.js",
+    "build:view": "node view/build.js",
+    "deploy": "tsc && node view/build.js && mkdir -p ../TheArchiver/plugins/plugin-social/view && cp dist/index.js manifest.json ../TheArchiver/plugins/plugin-social/ && cp view/index.js ../TheArchiver/plugins/plugin-social/view/ && if [ -d ../TheArchiver/.next/standalone/plugins/plugin-social ]; then cp dist/index.js manifest.json ../TheArchiver/.next/standalone/plugins/plugin-social/ && mkdir -p ../TheArchiver/.next/standalone/plugins/plugin-social/view && cp view/index.js ../TheArchiver/.next/standalone/plugins/plugin-social/view/; fi",
+    "package": "tsc && node view/build.js && mkdir -p dist/package/view && cp dist/index.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-social.zip ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.9.0"
+  }
+}

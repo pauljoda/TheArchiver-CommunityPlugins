@@ -1,0 +1,14 @@
+{
+  "name": "plugin-youtube",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && node dist/manifest-gen.js",
+    "deploy": "tsc && node dist/manifest-gen.js && mkdir -p ../TheArchiver/plugins/plugin-youtube && cp dist/index.js dist/sites.js dist/settings.js manifest.json ../TheArchiver/plugins/plugin-youtube/ && cp -r yt-dlp-plugins ../TheArchiver/plugins/plugin-youtube/",
+    "package": "tsc && node dist/manifest-gen.js && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}

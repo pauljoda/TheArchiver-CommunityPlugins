@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "baseUrl": "https://github.com/TheArchiver-App/CommunityPlugins/releases/latest/download",
+  "plugins": [
+    {
+      "id": "plugin-archiveorg",
+      "name": "Archive.org",
+      "version": "2.0.0",
+      "description": "Download content from Archive.org with optional authentication",
+      "author": "TheArchiver",
+      "downloadFile": "plugin-archiveorg.zip",
+      "path": "plugins/plugin-archiveorg"
+    },
+    {
+      "id": "plugin-gallery-dl",
+      "name": "gallery-dl",
+      "version": "1.0.0",
+      "description": "Download images and media from Pixiv, Twitter, Instagram, DeviantArt, Danbooru, ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
+      "author": "TheArchiver",
+      "downloadFile": "plugin-gallery-dl.zip",
+      "path": "plugins/plugin-gallery-dl"
+    },
+    {
+      "id": "plugin-social",
+      "name": "Socials",
+      "version": "1.1.0",
+      "description": "Download images, galleries, and metadata from social media platforms",
+      "author": "TheArchiver",
+      "downloadFile": "plugin-social.zip",
+      "path": "plugins/plugin-social"
+    },
+    {
+      "id": "plugin-youtube",
+      "name": "yt-dlp",
+      "version": "1.0.0",
+      "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",
+      "author": "TheArchiver",
+      "downloadFile": "plugin-youtube.zip",
+      "path": "plugins/plugin-youtube"
+    }
+  ]
+}
