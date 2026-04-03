@@ -10,11 +10,12 @@
 
 ### Changes
 
+- **Rewrote Gallery Browser** as a media-focused file browser: shows images and videos inline in a scrolling feed, directories as navigable folder cards with preview thumbnails, lightbox with keyboard navigation, no more social timeline sort controls
 - Removed all social platform metadata enrichment (NFO generation for Reddit/Bluesky/Twitter posts)
 - Removed Reddit-specific settings (reddit_client_id, reddit_user_agent, reddit_whitelist)
 - Removed Bluesky and Twitter-specific settings
 - Adopted core `helpers.string.shellEscape`, `helpers.string.xmlEscape`, `helpers.url.resolveOutputDir`
-- Simplified view code by removing social platform NFO parsers
+- Removed 9 dead social view files (~6700 lines), view bundle reduced from 14 source files to 5
 
 ## 1.0.0
 
