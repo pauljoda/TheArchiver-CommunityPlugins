@@ -55,17 +55,16 @@ execSync("npm run package", { cwd: pluginDir, stdio: "inherit" });
 
 // Copy ZIP to root dist/
 const distDir = join(pluginDir, "dist");
-const files = await readdir(distDir);
-const zip = files.find((f) => f.endsWith(".zip"));
+const expectedZip = `${pluginName}.zip`;
 
-if (!zip) {
-  console.error(`No ZIP file produced in ${distDir}`);
+if (!existsSync(join(distDir, expectedZip))) {
+  console.error(`Expected ZIP not found: ${join(distDir, expectedZip)}`);
   process.exit(1);
 }
 
 await mkdir(DIST_DIR, { recursive: true });
-const dest = join(DIST_DIR, `${pluginName}.zip`);
-await copyFile(join(distDir, zip), dest);
+const dest = join(DIST_DIR, expectedZip);
+await copyFile(join(distDir, expectedZip), dest);
 console.log(`\n--- Copied ZIP to ${dest} ---`);
 
 // Regenerate manifest
