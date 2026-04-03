@@ -217,25 +217,77 @@
   flex-shrink: 0;
 }
 
-/* \u2500\u2500 Load more \u2500\u2500 */
-.gallery-load-more {
-  display: block;
-  width: 100%;
-  padding: 0.75rem;
-  margin-top: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--card);
-  color: var(--muted-foreground);
-  font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  text-align: center;
+/* \u2500\u2500 Controls bar \u2500\u2500 */
+.gallery-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
-.gallery-load-more:hover {
-  border-color: var(--primary);
+.gallery-controls-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
   color: var(--foreground);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.gallery-controls-search:focus {
+  border-color: var(--primary);
+}
+.gallery-controls-search::placeholder {
+  color: var(--muted-foreground);
+}
+.gallery-controls-sort {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.gallery-controls-sort:hover {
+  border-color: var(--primary);
+}
+.gallery-no-results {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 2rem 1rem;
+}
+
+/* \u2500\u2500 Caption link \u2500\u2500 */
+.gallery-media-name-link {
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+.gallery-media-name-link:hover {
+  color: var(--primary);
 }
 
 /* \u2500\u2500 Lightbox \u2500\u2500 */
@@ -454,6 +506,13 @@
     card.appendChild(label);
     return card;
   }
+  function debounce(fn, ms) {
+    let timer;
+    return () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    };
+  }
   function renderMediaItem(file, allImages, imageIndex, openFile) {
     const item = document.createElement("div");
     item.className = "gallery-media-item";
@@ -497,9 +556,14 @@
     }
     const caption = document.createElement("div");
     caption.className = "gallery-media-caption";
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "gallery-media-name";
-    nameSpan.textContent = file.name;
+    const nameBtn = document.createElement("button");
+    nameBtn.className = "gallery-media-name-link";
+    nameBtn.textContent = file.name;
+    nameBtn.title = "Open in preview";
+    nameBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFile(file.path);
+    });
     const metaSpan = document.createElement("span");
     metaSpan.className = "gallery-media-meta";
     const parts = [];
@@ -507,7 +571,7 @@
     const dateStr = formatRelativeDate(file.modifiedAt);
     if (dateStr) parts.push(dateStr);
     metaSpan.textContent = parts.join(" \xB7 ");
-    caption.appendChild(nameSpan);
+    caption.appendChild(nameBtn);
     caption.appendChild(metaSpan);
     item.appendChild(caption);
     return item;
@@ -563,33 +627,91 @@
       `;
         return;
       }
+      let searchTerm = "";
+      let sortMode = "name";
+      const hasMedia = mediaFiles.length > 0;
+      if (hasMedia) {
+        const controls = document.createElement("div");
+        controls.className = "gallery-controls";
+        controls.innerHTML = `
+        <input type="text" class="gallery-controls-search" placeholder="Search files..." aria-label="Search files" />
+        <select class="gallery-controls-sort" aria-label="Sort files">
+          <option value="name">Name</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="largest">Largest</option>
+        </select>
+      `;
+        viewContainer.appendChild(controls);
+        const searchInput = controls.querySelector(".gallery-controls-search");
+        const sortSelect = controls.querySelector(".gallery-controls-sort");
+        sortSelect.addEventListener("change", () => {
+          sortMode = sortSelect.value;
+          resetAndRender();
+        });
+        searchInput.addEventListener(
+          "input",
+          debounce(() => {
+            searchTerm = searchInput.value.trim().toLowerCase();
+            resetAndRender();
+          }, 300)
+        );
+      }
       const feed = document.createElement("div");
       feed.className = "gallery-feed";
       viewContainer.appendChild(feed);
-      const allImages = mediaFiles.filter((f) => isImageFile(f.name)).map((f) => ({ src: getFileUrl(f.path), name: f.name }));
-      const feedItems = [];
-      for (const dir of dirs) {
-        feedItems.push({ type: "dir", entry: dir });
-      }
-      let imgIdx = 0;
-      for (const file of mediaFiles) {
-        const isImg = isImageFile(file.name);
-        feedItems.push({
-          type: "media",
-          entry: file,
-          imageIndex: isImg ? imgIdx : -1
-        });
-        if (isImg) imgIdx++;
-      }
-      let loaded = 0;
-      let isRendering = false;
       const sentinel = document.createElement("div");
       sentinel.style.height = "1px";
       viewContainer.appendChild(sentinel);
+      function buildFeedItems() {
+        let filteredMedia = searchTerm ? mediaFiles.filter((f) => f.name.toLowerCase().includes(searchTerm)) : mediaFiles;
+        filteredMedia = [...filteredMedia];
+        switch (sortMode) {
+          case "name":
+            filteredMedia.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+          case "newest":
+            filteredMedia.sort(
+              (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+            );
+            break;
+          case "oldest":
+            filteredMedia.sort(
+              (a, b) => new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
+            );
+            break;
+          case "largest":
+            filteredMedia.sort((a, b) => b.size - a.size);
+            break;
+        }
+        const lightboxImages = filteredMedia.filter((f) => isImageFile(f.name)).map((f) => ({ src: getFileUrl(f.path), name: f.name }));
+        const items = [];
+        if (!searchTerm) {
+          for (const dir of dirs) {
+            items.push({ type: "dir", entry: dir });
+          }
+        }
+        let imgIdx = 0;
+        for (const file of filteredMedia) {
+          const isImg = isImageFile(file.name);
+          items.push({
+            type: "media",
+            entry: file,
+            imageIndex: isImg ? imgIdx : -1
+          });
+          if (isImg) imgIdx++;
+        }
+        currentLightboxImages = lightboxImages;
+        return items;
+      }
+      let currentLightboxImages = [];
+      let currentFeedItems = [];
+      let loaded = 0;
+      let isRendering = false;
       const renderBatch = () => {
-        if (isRendering) return;
+        if (isRendering || loaded >= currentFeedItems.length) return;
         isRendering = true;
-        const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
+        const batch = currentFeedItems.slice(loaded, loaded + BATCH_SIZE);
         for (const item of batch) {
           if (item.type === "dir") {
             const card = renderFolderCard(
@@ -600,8 +722,8 @@
             );
             feed.appendChild(card);
             const previewObserver = new IntersectionObserver(
-              (entries2) => {
-                if (entries2[0].isIntersecting) {
+              (observerEntries) => {
+                if (observerEntries[0].isIntersecting) {
                   previewObserver.disconnect();
                   this.api.fetchFiles(item.entry.path).then((children) => {
                     const firstImg = children.find(
@@ -626,7 +748,7 @@
             feed.appendChild(
               renderMediaItem(
                 item.entry,
-                allImages,
+                currentLightboxImages,
                 item.imageIndex,
                 (p) => this.api.openFile(p)
               )
@@ -637,15 +759,26 @@
         viewContainer.appendChild(sentinel);
         isRendering = false;
       };
+      const resetAndRender = () => {
+        currentFeedItems = buildFeedItems();
+        loaded = 0;
+        feed.innerHTML = "";
+        if (currentFeedItems.length === 0 && searchTerm) {
+          feed.innerHTML = `<div class="gallery-no-results">No files match "${escapeHtml(searchTerm)}"</div>`;
+          return;
+        }
+        renderBatch();
+      };
       const scrollObserver = new IntersectionObserver(
-        (entries2) => {
-          if (entries2[0].isIntersecting && !isRendering && loaded < feedItems.length) {
+        (observerEntries) => {
+          if (observerEntries[0].isIntersecting && !isRendering && loaded < currentFeedItems.length) {
             renderBatch();
           }
         },
         { rootMargin: "600px" }
       );
       scrollObserver.observe(sentinel);
+      currentFeedItems = buildFeedItems();
       renderBatch();
     }
     onPathChange(newPath, api) {

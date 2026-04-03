@@ -161,6 +161,14 @@ function renderFolderCard(
   return card;
 }
 
+function debounce(fn: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
 // ── Media item (image or video in the feed) ───────────────
 function renderMediaItem(
   file: FileEntry,
@@ -210,12 +218,17 @@ function renderMediaItem(
     item.appendChild(img);
   }
 
-  // Caption
+  // Caption — filename opens the built-in preview overlay
   const caption = document.createElement("div");
   caption.className = "gallery-media-caption";
-  const nameSpan = document.createElement("span");
-  nameSpan.className = "gallery-media-name";
-  nameSpan.textContent = file.name;
+  const nameBtn = document.createElement("button");
+  nameBtn.className = "gallery-media-name-link";
+  nameBtn.textContent = file.name;
+  nameBtn.title = "Open in preview";
+  nameBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openFile(file.path);
+  });
   const metaSpan = document.createElement("span");
   metaSpan.className = "gallery-media-meta";
   const parts: string[] = [];
@@ -223,7 +236,7 @@ function renderMediaItem(
   const dateStr = formatRelativeDate(file.modifiedAt);
   if (dateStr) parts.push(dateStr);
   metaSpan.textContent = parts.join(" · ");
-  caption.appendChild(nameSpan);
+  caption.appendChild(nameBtn);
   caption.appendChild(metaSpan);
   item.appendChild(caption);
 
@@ -293,54 +306,128 @@ export class RedditApp {
       return;
     }
 
+    // Controls bar: search + sort (only if there are media files)
+    let searchTerm = "";
+    let sortMode: "name" | "newest" | "oldest" | "largest" = "name";
+
+    const hasMedia = mediaFiles.length > 0;
+
+    if (hasMedia) {
+      const controls = document.createElement("div");
+      controls.className = "gallery-controls";
+      controls.innerHTML = `
+        <input type="text" class="gallery-controls-search" placeholder="Search files..." aria-label="Search files" />
+        <select class="gallery-controls-sort" aria-label="Sort files">
+          <option value="name">Name</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="largest">Largest</option>
+        </select>
+      `;
+      viewContainer.appendChild(controls);
+
+      const searchInput = controls.querySelector<HTMLInputElement>(".gallery-controls-search")!;
+      const sortSelect = controls.querySelector<HTMLSelectElement>(".gallery-controls-sort")!;
+
+      sortSelect.addEventListener("change", () => {
+        sortMode = sortSelect.value as typeof sortMode;
+        resetAndRender();
+      });
+
+      searchInput.addEventListener(
+        "input",
+        debounce(() => {
+          searchTerm = searchInput.value.trim().toLowerCase();
+          resetAndRender();
+        }, 300)
+      );
+    }
+
     const feed = document.createElement("div");
     feed.className = "gallery-feed";
     viewContainer.appendChild(feed);
-
-    // Build image list for lightbox navigation (images only, not videos)
-    const allImages = mediaFiles
-      .filter((f) => isImageFile(f.name))
-      .map((f) => ({ src: getFileUrl(f.path), name: f.name }));
-
-    // Combine dirs and media into a single ordered list:
-    // Directories first, then media files
-    type FeedItem =
-      | { type: "dir"; entry: FileEntry }
-      | { type: "media"; entry: FileEntry; imageIndex: number };
-
-    const feedItems: FeedItem[] = [];
-
-    // Add folders
-    for (const dir of dirs) {
-      feedItems.push({ type: "dir", entry: dir });
-    }
-
-    // Add media files with their image index for lightbox
-    let imgIdx = 0;
-    for (const file of mediaFiles) {
-      const isImg = isImageFile(file.name);
-      feedItems.push({
-        type: "media",
-        entry: file,
-        imageIndex: isImg ? imgIdx : -1,
-      });
-      if (isImg) imgIdx++;
-    }
-
-    // Batch render with infinite scroll
-    let loaded = 0;
-    let isRendering = false;
 
     // Sentinel for infinite scroll
     const sentinel = document.createElement("div");
     sentinel.style.height = "1px";
     viewContainer.appendChild(sentinel);
 
+    type FeedItem =
+      | { type: "dir"; entry: FileEntry }
+      | { type: "media"; entry: FileEntry; imageIndex: number };
+
+    function buildFeedItems(): FeedItem[] {
+      // Filter media by search
+      let filteredMedia = searchTerm
+        ? mediaFiles.filter((f) => f.name.toLowerCase().includes(searchTerm))
+        : mediaFiles;
+
+      // Sort media
+      filteredMedia = [...filteredMedia];
+      switch (sortMode) {
+        case "name":
+          filteredMedia.sort((a, b) => a.name.localeCompare(b.name));
+          break;
+        case "newest":
+          filteredMedia.sort(
+            (a, b) =>
+              new Date(b.modifiedAt).getTime() -
+              new Date(a.modifiedAt).getTime()
+          );
+          break;
+        case "oldest":
+          filteredMedia.sort(
+            (a, b) =>
+              new Date(a.modifiedAt).getTime() -
+              new Date(b.modifiedAt).getTime()
+          );
+          break;
+        case "largest":
+          filteredMedia.sort((a, b) => b.size - a.size);
+          break;
+      }
+
+      // Build image list for lightbox navigation (images only, not videos)
+      const lightboxImages = filteredMedia
+        .filter((f) => isImageFile(f.name))
+        .map((f) => ({ src: getFileUrl(f.path), name: f.name }));
+
+      const items: FeedItem[] = [];
+
+      // Folders first (not affected by search/sort)
+      if (!searchTerm) {
+        for (const dir of dirs) {
+          items.push({ type: "dir", entry: dir });
+        }
+      }
+
+      // Media files with lightbox indices
+      let imgIdx = 0;
+      for (const file of filteredMedia) {
+        const isImg = isImageFile(file.name);
+        items.push({
+          type: "media",
+          entry: file,
+          imageIndex: isImg ? imgIdx : -1,
+        });
+        if (isImg) imgIdx++;
+      }
+
+      // Store lightbox images for rendering
+      currentLightboxImages = lightboxImages;
+      return items;
+    }
+
+    let currentLightboxImages: { src: string; name: string }[] = [];
+    let currentFeedItems: FeedItem[] = [];
+    let loaded = 0;
+    let isRendering = false;
+
     const renderBatch = (): void => {
-      if (isRendering) return;
+      if (isRendering || loaded >= currentFeedItems.length) return;
       isRendering = true;
 
-      const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
+      const batch = currentFeedItems.slice(loaded, loaded + BATCH_SIZE);
       for (const item of batch) {
         if (item.type === "dir") {
           const card = renderFolderCard(item.entry, null, 0, (p) =>
@@ -350,8 +437,8 @@ export class RedditApp {
 
           // Lazy-load preview when folder card scrolls into view
           const previewObserver = new IntersectionObserver(
-            (entries) => {
-              if (entries[0].isIntersecting) {
+            (observerEntries) => {
+              if (observerEntries[0].isIntersecting) {
                 previewObserver.disconnect();
                 this.api.fetchFiles(item.entry.path).then((children) => {
                   const firstImg = children.find(
@@ -375,7 +462,7 @@ export class RedditApp {
           feed.appendChild(
             renderMediaItem(
               item.entry,
-              allImages,
+              currentLightboxImages,
               item.imageIndex,
               (p) => this.api.openFile(p)
             )
@@ -390,10 +477,23 @@ export class RedditApp {
       isRendering = false;
     };
 
+    const resetAndRender = (): void => {
+      currentFeedItems = buildFeedItems();
+      loaded = 0;
+      feed.innerHTML = "";
+
+      if (currentFeedItems.length === 0 && searchTerm) {
+        feed.innerHTML = `<div class="gallery-no-results">No files match "${escapeHtml(searchTerm)}"</div>`;
+        return;
+      }
+
+      renderBatch();
+    };
+
     // IntersectionObserver for infinite scroll
     const scrollObserver = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isRendering && loaded < feedItems.length) {
+      (observerEntries) => {
+        if (observerEntries[0].isIntersecting && !isRendering && loaded < currentFeedItems.length) {
           renderBatch();
         }
       },
@@ -401,6 +501,8 @@ export class RedditApp {
     );
     scrollObserver.observe(sentinel);
 
+    // Initial render
+    currentFeedItems = buildFeedItems();
     renderBatch();
   }
 

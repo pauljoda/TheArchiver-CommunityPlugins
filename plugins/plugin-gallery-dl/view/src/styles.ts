@@ -212,25 +212,77 @@ const CSS = `
   flex-shrink: 0;
 }
 
-/* ── Load more ── */
-.gallery-load-more {
-  display: block;
-  width: 100%;
-  padding: 0.75rem;
-  margin-top: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--card);
-  color: var(--muted-foreground);
-  font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  text-align: center;
+/* ── Controls bar ── */
+.gallery-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
-.gallery-load-more:hover {
-  border-color: var(--primary);
+.gallery-controls-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
   color: var(--foreground);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.gallery-controls-search:focus {
+  border-color: var(--primary);
+}
+.gallery-controls-search::placeholder {
+  color: var(--muted-foreground);
+}
+.gallery-controls-sort {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.gallery-controls-sort:hover {
+  border-color: var(--primary);
+}
+.gallery-no-results {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 2rem 1rem;
+}
+
+/* ── Caption link ── */
+.gallery-media-name-link {
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+.gallery-media-name-link:hover {
+  color: var(--primary);
 }
 
 /* ── Lightbox ── */
