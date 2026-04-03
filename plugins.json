@@ -3,7 +3,7 @@
   "baseUrl": "https://raw.githubusercontent.com/pauljoda/TheArchiver-CommunityPlugins/main/dist",
   "plugins": [
     {
-      "id": "plugin-archiveorg",
+      "id": "archive-org",
       "name": "Archive.org",
       "version": "2.0.0",
       "description": "Download content from Archive.org with optional authentication",
@@ -12,7 +12,7 @@
       "path": "plugins/plugin-archiveorg"
     },
     {
-      "id": "plugin-gallery-dl",
+      "id": "gallery-dl",
       "name": "gallery-dl",
       "version": "1.0.0",
       "description": "Download images and media from Pixiv, Twitter, Instagram, DeviantArt, Danbooru, ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
@@ -21,7 +21,7 @@
       "path": "plugins/plugin-gallery-dl"
     },
     {
-      "id": "plugin-social",
+      "id": "socials",
       "name": "Socials",
       "version": "1.1.0",
       "description": "Download images, galleries, and metadata from social media platforms",
@@ -30,7 +30,7 @@
       "path": "plugins/plugin-social"
     },
     {
-      "id": "plugin-youtube",
+      "id": "yt-dlp",
       "name": "yt-dlp",
       "version": "1.0.0",
       "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",

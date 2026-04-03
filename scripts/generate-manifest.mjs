@@ -17,8 +17,10 @@ async function main() {
     const manifestPath = join(PLUGINS_DIR, entry.name, "manifest.json");
     try {
       const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+      // ID must match the app's slugify: lowercase, non-alphanumeric → dashes, trim dashes
+      const id = manifest.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       plugins.push({
-        id: entry.name,
+        id,
         name: manifest.name,
         version: manifest.version || "1.0.0",
         description: manifest.description || "",
