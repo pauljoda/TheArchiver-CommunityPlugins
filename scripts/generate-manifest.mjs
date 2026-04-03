@@ -33,7 +33,7 @@ async function main() {
 
   const output = {
     version: 1,
-    baseUrl: "https://github.com/TheArchiver-App/CommunityPlugins/releases/latest/download",
+    baseUrl: "https://raw.githubusercontent.com/pauljoda/TheArchiver-CommunityPlugins/main/dist",
     plugins,
   };
   await writeFile(OUTPUT, JSON.stringify(output, null, 2) + "\n");

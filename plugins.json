@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "baseUrl": "https://github.com/TheArchiver-App/CommunityPlugins/releases/latest/download",
+  "baseUrl": "https://raw.githubusercontent.com/pauljoda/TheArchiver-CommunityPlugins/main/dist",
   "plugins": [
     {
       "id": "plugin-archiveorg",
