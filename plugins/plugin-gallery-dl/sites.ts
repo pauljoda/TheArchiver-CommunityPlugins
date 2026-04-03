@@ -6,12 +6,6 @@ export const urlPatterns: string[] = [
   // ═══════════════════════════════════════════
   // Social Media & Creator Platforms
   // ═══════════════════════════════════════════
-  // Twitter / X
-  "*.twitter.com",
-  "*.x.com",
-  "*.nitter.net",
-  "*.nitter.it",
-  "*.nitter.1d4.us",
   // Instagram
   "*.instagram.com",
   "*.cdninstagram.com",
@@ -29,13 +23,6 @@ export const urlPatterns: string[] = [
   "*.pin.it",
   // Tumblr
   "*.tumblr.com",
-  // Reddit
-  "*.reddit.com",
-  "*.redd.it",
-  "*.old.reddit.com",
-  // Bluesky
-  "*.bsky.app",
-  "*.bsky.social",
   // Mastodon (common instances)
   "*.mastodon.social",
   "*.mastodon.online",
@@ -579,9 +566,6 @@ export const urlPatterns: string[] = [
   "*.misskey.design",
   "*.lesbian.energy",
   "*.sushi.ski",
-  "*.nitter.space",
-  "*.nitter.tiekoetter",
-  "*.xcancel.com",
   "*.lightbrd.com",
   "*.raddle.me",
   "*.reactor.cc",
@@ -652,14 +636,11 @@ export const urlPatterns: string[] = [
 // Each entry allows users to assign a download folder to a specific domain.
 export const siteOptions = [
   // Social Media
-  { label: "Twitter / X", value: "twitter.com" },
   { label: "Instagram", value: "instagram.com" },
   { label: "Facebook", value: "facebook.com" },
   { label: "TikTok", value: "tiktok.com" },
   { label: "Pinterest", value: "pinterest.com" },
   { label: "Tumblr", value: "tumblr.com" },
-  { label: "Reddit", value: "reddit.com" },
-  { label: "Bluesky", value: "bsky.app" },
   { label: "Mastodon", value: "mastodon.social" },
   { label: "Weibo", value: "weibo.com" },
   { label: "VK", value: "vk.com" },

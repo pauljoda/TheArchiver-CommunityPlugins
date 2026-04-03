@@ -74,7 +74,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
     label: "🍪 Cookies File (Global)",
     description:
       "Upload a Netscape-format cookies.txt file for authenticated downloads. " +
-      "This is used as a fallback for all sites. Many sites (Instagram, Twitter/X, " +
+      "This is used as a fallback for all sites. Many sites (Instagram, " +
       "Facebook, TikTok, Patreon, Fanbox, Fantia, Fur Affinity, ExHentai, etc.) " +
       "require cookies for access. " +
       "To export cookies: Chrome → 'Get cookies.txt LOCALLY' extension; " +
@@ -130,7 +130,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
     type: "string",
     label: "🍪 Cookie Domain Filter",
     description:
-      "Only extract cookies for this domain (e.g., '.twitter.com'). " +
+      "Only extract cookies for this domain (e.g., '.instagram.com'). " +
       "Leave blank to extract all cookies from the browser. " +
       "Useful for limiting which cookies are sent to gallery-dl.",
     required: false,
@@ -240,30 +240,6 @@ export const pluginSettings: PluginSettingDefinition[] = [
     sortOrder: 28,
   },
 
-  // --- Reddit (OAuth Optional) ---
-  {
-    key: "reddit_client_id",
-    type: "string",
-    label: "Reddit — Client ID",
-    description:
-      "Optional Reddit API Client ID for higher rate limits and access to restricted content. " +
-      "Create one at https://www.reddit.com/prefs/apps/ (script type).",
-    required: false,
-    section: "OAuth Authentication",
-    sortOrder: 29,
-  },
-  {
-    key: "reddit_user_agent",
-    type: "string",
-    label: "Reddit — User Agent",
-    description:
-      "Custom User-Agent for Reddit API requests. Required format: '<platform>:<app_id>:<version> (by /u/<username>)'. " +
-      "Example: 'gallery-dl:myapp:1.0 (by /u/myusername)'",
-    required: false,
-    section: "OAuth Authentication",
-    sortOrder: 30,
-  },
-
   // --- Tumblr (OAuth Optional) ---
   {
     key: "tumblr_access_token",
@@ -340,30 +316,6 @@ export const pluginSettings: PluginSettingDefinition[] = [
   // ═══════════════════════════════════════════════════════════════
   // AUTHENTICATION — USERNAME / PASSWORD SITES (40–59)
   // ═══════════════════════════════════════════════════════════════
-
-  // --- Bluesky ---
-  {
-    key: "bluesky_username",
-    type: "string",
-    label: "Bluesky — Handle or DID",
-    description:
-      "Your Bluesky handle (e.g., 'user.bsky.social') or DID. " +
-      "Needed for accessing restricted content.",
-    required: false,
-    section: "Username / Password",
-    sortOrder: 40,
-  },
-  {
-    key: "bluesky_password",
-    type: "password",
-    label: "Bluesky — App Password",
-    description:
-      "Create an App Password at Settings → App Passwords in Bluesky. " +
-      "Do NOT use your main password.",
-    required: false,
-    section: "Username / Password",
-    sortOrder: 41,
-  },
 
   // --- Sankaku ---
   {
@@ -773,38 +725,6 @@ export const pluginSettings: PluginSettingDefinition[] = [
     sortOrder: 83,
   },
 
-  // --- Twitter-specific ---
-  {
-    key: "twitter_text_tweets",
-    type: "boolean",
-    label: "Twitter/X — Include Text-Only Tweets",
-    description: "Also download tweets that have no media attachments (saves metadata only).",
-    required: false,
-    defaultValue: false,
-    section: "Site-Specific Options",
-    sortOrder: 84,
-  },
-  {
-    key: "twitter_retweets",
-    type: "boolean",
-    label: "Twitter/X — Include Retweets",
-    description: "Include retweets when downloading a user's timeline.",
-    required: false,
-    defaultValue: false,
-    section: "Site-Specific Options",
-    sortOrder: 85,
-  },
-  {
-    key: "twitter_quoted",
-    type: "boolean",
-    label: "Twitter/X — Include Quoted Tweets",
-    description: "Include media from quoted tweets.",
-    required: false,
-    defaultValue: false,
-    section: "Site-Specific Options",
-    sortOrder: 86,
-  },
-
   // --- Instagram-specific ---
   {
     key: "instagram_include",
@@ -816,19 +736,6 @@ export const pluginSettings: PluginSettingDefinition[] = [
     required: false,
     section: "Site-Specific Options",
     sortOrder: 87,
-  },
-
-  // --- Reddit-specific ---
-  {
-    key: "reddit_whitelist",
-    type: "string",
-    label: "Reddit — Allowed Domains",
-    description:
-      "Comma-separated list of domains to download from Reddit posts. " +
-      "Example: 'imgur.com,i.redd.it,redgifs.com'. Leave blank for all.",
-    required: false,
-    section: "Site-Specific Options",
-    sortOrder: 88,
   },
 
   // --- ExHentai-specific ---
