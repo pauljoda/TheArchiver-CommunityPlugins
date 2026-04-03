@@ -28,6 +28,16 @@ interface DownloadContext {
     io: {
       ensureDir(dirPath: string): Promise<void>;
       fileExists(filePath: string): Promise<boolean>;
+      downloadFile(
+        url: string,
+        outputPath: string,
+        options?: {
+          userAgent?: string;
+          cookies?: string;
+          headers?: Record<string, string>;
+          redirect?: RequestRedirect;
+        }
+      ): Promise<void>;
     };
     url: {
       extractBaseUrl(urlString: string): string;
@@ -113,42 +123,27 @@ async function downloadFileWithAuth(
   url: string,
   outputPath: string,
   credentials: Credentials | null,
+  helpers: DownloadContext["helpers"],
   logger: PluginLogger
 ): Promise<void> {
-  const fs = await import("fs/promises");
-  const dir = path.dirname(outputPath);
-  await fs.mkdir(dir, { recursive: true });
-
-  const headers: Record<string, string> = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  };
+  const headers: Record<string, string> = {};
   if (credentials) {
     Object.assign(headers, authHeaders(credentials));
   }
 
-  let res = await fetch(url, { headers, redirect: "manual" });
+  // Check for redirect first (archive.org redirects to S3 for file content)
+  const checkRes = await fetch(url, { headers, redirect: "manual" });
+  const finalUrl =
+    checkRes.status >= 300 && checkRes.status < 400
+      ? checkRes.headers.get("location") || url
+      : url;
 
-  // Handle S3 redirects manually (archive.org redirects to S3 for file content)
-  if (res.status >= 300 && res.status < 400) {
-    const redirectUrl = res.headers.get("location");
-    if (redirectUrl) {
-      logger.info(`Redirecting to: ${redirectUrl}`);
-      res = await fetch(redirectUrl, { headers });
-    }
+  if (finalUrl !== url) {
+    logger.info(`Redirecting to: ${finalUrl}`);
   }
 
-  if (!res.ok || !res.body) {
-    throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
-  }
-
-  const { Readable } = await import("stream");
-  const { pipeline } = await import("stream/promises");
-  const { createWriteStream } = await import("fs");
-
-  const nodeStream = Readable.fromWeb(res.body as never);
-  const fileStream = createWriteStream(outputPath);
-  await pipeline(nodeStream, fileStream);
+  // Download using core helper (handles directory creation and streaming)
+  await helpers.io.downloadFile(finalUrl, outputPath, { headers });
 }
 
 async function downloadDirectory(
@@ -228,7 +223,7 @@ async function downloadDirectory(
             }
 
             logger.info(`Downloading: ${fileName}`);
-            await downloadFileWithAuth(fileUrl, localPath, credentials, logger);
+            await downloadFileWithAuth(fileUrl, localPath, credentials, helpers, logger);
             logger.info(`Completed: ${fileName}`);
           } catch (e) {
             logger.error(`Failed: ${fileUrl} - ${(e as Error).message}`);

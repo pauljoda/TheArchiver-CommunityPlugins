@@ -26,12 +26,29 @@ interface PluginHelpers {
     listFiles: (dirPath: string, pattern?: RegExp) => Promise<string[]>;
     moveFile: (src: string, dest: string) => Promise<void>;
   };
-  url: unknown;
+  process: {
+    execAsync: (cmd: string, options?: { maxBuffer?: number; timeout?: number }) => Promise<{ stdout: string; stderr: string }>;
+  };
+  url: {
+    resolveOutputDir: (
+      url: string,
+      rootDir: string,
+      defaultFolder: string,
+      siteDirectoriesJson: string,
+      logger: PluginLogger,
+      opts?: unknown
+    ) => string;
+  };
   string: {
     sanitizeFilename: (input: string) => string;
     slugify: (input: string) => string;
     padNumber: (num: number, length: number) => string;
     removeNumbersAndSpaces: (input: string) => string;
+    shellEscape: (arg: string) => string;
+    xmlEscape: (str: string) => string;
+    truncateTitle: (title: string, maxLen: number) => string;
+    filenameFromUrl: (url: string) => string | null;
+    getMimeExtension: (mime: string) => string;
   };
 }
 
@@ -107,19 +124,6 @@ function execAsync(
   });
 }
 
-function shellEscape(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
-/** Escape a string for safe inclusion in XML text content. */
-function xmlEscape(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 /**
  * Get a setting value, returning empty string for falsy / "null" / "undefined" values.
@@ -148,53 +152,6 @@ function getBaseFolder(settings: PluginSettingsAccessor): string {
   return getSetting(settings, "save_directory") || getSetting(settings, "library_folder") || "gallery-dl";
 }
 
-/**
- * Resolve the output directory for a download URL.
- * Checks the per-site directory overrides first, then falls back to the default library folder.
- */
-function resolveOutputDir(
-  url: string,
-  rootDirectory: string,
-  baseFolder: string,
-  settings: PluginSettingsAccessor,
-  logger: PluginLogger
-): string {
-  const baseOutputDir = path.join(rootDirectory, baseFolder);
-  const raw = getSetting(settings, "site_directories");
-  if (!raw) return baseOutputDir;
-
-  let siteMap: Record<string, string>;
-  try {
-    siteMap = JSON.parse(raw);
-  } catch {
-    logger.warn("site_directories setting is not valid JSON, using default folder");
-    return baseOutputDir;
-  }
-
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname;
-  } catch {
-    return baseOutputDir;
-  }
-
-  for (const [domain, folder] of Object.entries(siteMap)) {
-    if (hostname === domain || hostname.endsWith("." + domain)) {
-      const segments = folder.split(/[\\/]+/).filter(Boolean);
-      if (segments.length === 0) {
-        return baseOutputDir;
-      }
-
-      const relativePath =
-        segments[0] === baseFolder ? segments : [baseFolder, ...segments];
-
-      logger.info(`Site directory override: ${domain} -> ${relativePath.join("/")}`);
-      return path.join(rootDirectory, ...relativePath);
-    }
-  }
-
-  return baseOutputDir;
-}
 
 // =========================================
 // gallery-dl Config Generation
@@ -719,7 +676,8 @@ function sanitizeGalleryDlErrorOutput(raw: string): string {
 function writeNfoFromMetadata(
   metaJsonPath: string,
   sourceUrl: string,
-  logger: PluginLogger
+  logger: PluginLogger,
+  xmlEscape: (s: string) => string
 ): void {
   try {
     const raw = fs.readFileSync(metaJsonPath, "utf8");
@@ -991,7 +949,7 @@ const plugin = definePlugin({
     }
 
     // ── Resolve output directory ──
-    const outputDir = resolveOutputDir(url, rootDirectory, baseFolder, settings, logger);
+    const outputDir = helpers.url.resolveOutputDir(url, rootDirectory, baseFolder, settings.get("site_directories"), logger);
     await helpers.io.ensureDir(outputDir);
 
     // ── Verify gallery-dl is available ──
@@ -1036,7 +994,7 @@ const plugin = definePlugin({
 
     // Use our generated config alongside the global config
     // (--config-ignore skips global, then --config loads ours)
-    args.push("--config-ignore", "--config", shellEscape(configPath));
+    args.push("--config-ignore", "--config", helpers.string.shellEscape(configPath));
 
     // Verbose logging if enabled
     if (getBoolSetting(settings, "verbose", false)) {
@@ -1050,7 +1008,7 @@ const plugin = definePlugin({
     }
 
     // The URL to download
-    args.push(shellEscape(url));
+    args.push(helpers.string.shellEscape(url));
 
     const command = `gallery-dl ${args.join(" ")}`;
     logger.info(`Running: ${command}`);
@@ -1098,7 +1056,7 @@ const plugin = definePlugin({
           for (const jsonFile of jsonFiles) {
             const nfoFile = jsonFile.replace(/\.json$/, ".nfo");
             if (!fs.existsSync(nfoFile)) {
-              writeNfoFromMetadata(jsonFile, url, logger);
+              writeNfoFromMetadata(jsonFile, url, logger, helpers.string.xmlEscape);
             }
           }
         } catch (err) {

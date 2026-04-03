@@ -56,11 +56,17 @@ interface DownloadContext {
     };
     string: {
       sanitizeFilename(input: string): string;
+      xmlEscape(str: string): string;
+      truncateTitle(title: string, maxLen?: number): string;
+      filenameFromUrl(url: string): string | null;
+      getMimeExtension(mime: string): string;
     };
   };
   logger: PluginLogger;
   settings: PluginSettingsAccessor;
 }
+
+type StringHelpers = DownloadContext["helpers"]["string"];
 
 interface ArchiverPlugin {
   name: string;
@@ -994,37 +1000,6 @@ function isVideoPost(post: RedditPost): boolean {
   );
 }
 
-function getMimeExtension(mime: string): string {
-  const map: Record<string, string> = {
-    "image/jpg": "jpg",
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/gif": "gif",
-    "image/webp": "webp",
-    "image/avif": "avif",
-    "image/bmp": "bmp",
-    "image/svg+xml": "svg",
-    "image/tiff": "tiff",
-  };
-  return map[mime.toLowerCase()] || "jpg";
-}
-
-function truncateTitle(title: string, maxLen: number = 80): string {
-  if (title.length <= maxLen) return title;
-  return title.substring(0, maxLen).replace(/[-_\s]+$/, "");
-}
-
-function filenameFromUrl(url: string): string | null {
-  try {
-    const pathname = new URL(url).pathname;
-    const base = path.basename(pathname);
-    // Only use if it looks like a real filename (has extension)
-    if (base && path.extname(base)) return base;
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 async function downloadRedditVideo(
   post: RedditPost,
@@ -1129,8 +1104,9 @@ async function downloadRedditVideo(
 
 function extractMediaItems(
   post: RedditPost,
-  sanitizeFilename: (s: string) => string
+  stringHelpers: StringHelpers
 ): MediaItem[] {
+  const { sanitizeFilename, truncateTitle, filenameFromUrl, getMimeExtension } = stringHelpers;
   // Handle crossposts — the original post has the actual media
   const sourcePost =
     post.crosspost_parent_list && post.crosspost_parent_list.length > 0
@@ -1286,8 +1262,9 @@ function extractBlueskyVideo(
 
 function extractBlueskyMediaItems(
   post: BlueskyPost,
-  sanitizeFilename: (s: string) => string
+  stringHelpers: StringHelpers
 ): MediaItem[] {
+  const { sanitizeFilename, truncateTitle } = stringHelpers;
   const embed = post.embed;
   if (!embed) return [];
 
@@ -1468,20 +1445,11 @@ function extractTwitterMediaItems(
 // Section 5: Metadata & Comments Writer
 // =============================================================================
 
-function xmlEscape(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
 function formatUnixTimestamp(utc: number): string {
   return new Date(utc * 1000).toISOString();
 }
 
-function buildPostNfo(post: RedditPost, sourceUrl: string): string {
+function buildPostNfo(post: RedditPost, sourceUrl: string, xmlEscape: (s: string) => string): string {
   const lines: string[] = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<postdetails>`,
@@ -1683,11 +1651,12 @@ function writePostNfo(
   post: RedditPost,
   sourceUrl: string,
   postDir: string,
-  logger: PluginLogger
+  logger: PluginLogger,
+  xmlEscape: (s: string) => string
 ): void {
   const nfoPath = path.join(postDir, "Post.nfo");
   try {
-    const content = buildPostNfo(post, sourceUrl);
+    const content = buildPostNfo(post, sourceUrl, xmlEscape);
     fs.writeFileSync(nfoPath, content, "utf8");
     logger.info(`Wrote NFO: ${nfoPath}`);
   } catch (err) {
@@ -1985,7 +1954,7 @@ async function downloadBlueskyReplyMedia(
 // Section 5c: Bluesky NFO Writer
 // =============================================================================
 
-function buildBlueskyPostNfo(post: BlueskyPost, sourceUrl: string): string {
+function buildBlueskyPostNfo(post: BlueskyPost, sourceUrl: string, xmlEscape: (s: string) => string): string {
   const rkey = post.uri.split("/").pop() || "";
   const postUrl = `https://bsky.app/profile/${post.author.handle}/post/${rkey}`;
 
@@ -2097,11 +2066,12 @@ function writeBlueskyPostNfo(
   post: BlueskyPost,
   sourceUrl: string,
   postDir: string,
-  logger: PluginLogger
+  logger: PluginLogger,
+  xmlEscape: (s: string) => string
 ): void {
   const nfoPath = path.join(postDir, "Post.nfo");
   try {
-    const content = buildBlueskyPostNfo(post, sourceUrl);
+    const content = buildBlueskyPostNfo(post, sourceUrl, xmlEscape);
     fs.writeFileSync(nfoPath, content, "utf8");
     logger.info(`Wrote Bluesky NFO: ${nfoPath}`);
   } catch (err) {
@@ -2113,7 +2083,7 @@ function writeBlueskyPostNfo(
 // Section 5d: Twitter NFO Writer
 // =============================================================================
 
-function buildTwitterPostNfo(tweet: TwitterTweet, sourceUrl: string): string {
+function buildTwitterPostNfo(tweet: TwitterTweet, sourceUrl: string, xmlEscape: (s: string) => string): string {
   const tweetUrl = `https://x.com/${tweet.user.screen_name}/status/${tweet.id_str}`;
 
   const lines: string[] = [
@@ -2220,11 +2190,12 @@ function writeTwitterPostNfo(
   tweet: TwitterTweet,
   sourceUrl: string,
   postDir: string,
-  logger: PluginLogger
+  logger: PluginLogger,
+  xmlEscape: (s: string) => string
 ): void {
   const nfoPath = path.join(postDir, "Post.nfo");
   try {
-    const content = buildTwitterPostNfo(tweet, sourceUrl);
+    const content = buildTwitterPostNfo(tweet, sourceUrl, xmlEscape);
     fs.writeFileSync(nfoPath, content, "utf8");
     logger.info(`Wrote Twitter NFO: ${nfoPath}`);
   } catch (err) {
@@ -2394,9 +2365,9 @@ async function fetchAndSaveTwitterAvatar(
 
 function postFolderName(
   post: RedditPost,
-  sanitizeFilename: (s: string) => string
+  stringHelpers: StringHelpers
 ): string {
-  const safeTitle = sanitizeFilename(truncateTitle(post.title, 100));
+  const safeTitle = stringHelpers.sanitizeFilename(stringHelpers.truncateTitle(post.title, 100));
   return safeTitle || post.id;
 }
 
@@ -2413,7 +2384,7 @@ async function downloadPostToFolder(
   if (isVideoPost(post) && !isGifVideoPost(post)) {
     // Download video with audio muxing via ffmpeg
     await helpers.io.ensureDir(postDir);
-    writePostNfo(post, sourceUrl, postDir, logger);
+    writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape);
     if (fetchComments) {
       try {
         const commentUrl = `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}.json`;
@@ -2432,13 +2403,13 @@ async function downloadPostToFolder(
     return { downloaded: videoResult.downloaded ? 1 : 0, skipped: videoResult.downloaded ? 0 : 1, isVideo: true, metadataSaved: true };
   }
 
-  const mediaItems = extractMediaItems(post, helpers.string.sanitizeFilename);
+  const mediaItems = extractMediaItems(post, helpers.string);
 
   // Always create folder and save metadata — text-only and link posts are valuable content
   await helpers.io.ensureDir(postDir);
 
   // Always save metadata (Post.nfo) — this is the post's primary record
-  writePostNfo(post, sourceUrl, postDir, logger);
+  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape);
 
   if (fetchComments) {
     try {
@@ -2522,12 +2493,12 @@ async function handleSinglePost(
 
   const post = postListing.data.children[0].data;
 
-  const folderName = postFolderName(post, helpers.string.sanitizeFilename);
+  const folderName = postFolderName(post, helpers.string);
   const postDir = path.join(rootDirectory, saveDir, redditSubfolder, post.subreddit, folderName);
 
   // Always create folder and save metadata — every post is worth archiving
   await helpers.io.ensureDir(postDir);
-  writePostNfo(post, sourceUrl, postDir, logger);
+  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape);
 
   if (response.length >= 2) {
     await writePostComments(response[1], postDir, logger, context);
@@ -2548,7 +2519,7 @@ async function handleSinglePost(
     };
   }
 
-  const mediaItems = extractMediaItems(post, helpers.string.sanitizeFilename);
+  const mediaItems = extractMediaItems(post, helpers.string);
 
   if (mediaItems.length === 0) {
     const postType = post.selftext?.trim()
@@ -2633,7 +2604,7 @@ async function handleUserProfile(
   for (const post of posts) {
     subredditsFound.add(post.subreddit);
 
-    const folderName = postFolderName(post, helpers.string.sanitizeFilename);
+    const folderName = postFolderName(post, helpers.string);
     const postDir = path.join(
       rootDirectory,
       saveDir,
@@ -2722,7 +2693,7 @@ async function handleSubreddit(
   let totalArchived = 0;
 
   for (const post of posts) {
-    const folderName = postFolderName(post, helpers.string.sanitizeFilename);
+    const folderName = postFolderName(post, helpers.string);
     const postDir = path.join(rootDirectory, saveDir, redditSubfolder, subreddit, folderName);
 
     const result = await downloadPostToFolder(
@@ -2759,7 +2730,7 @@ async function handleSubreddit(
 
 function blueskyPostFolderName(
   post: BlueskyPost,
-  sanitizeFilename: (s: string) => string
+  stringHelpers: StringHelpers
 ): string {
   const rkey = post.uri.split("/").pop() || "unknown";
   const text = post.record.text.trim();
@@ -2768,8 +2739,8 @@ function blueskyPostFolderName(
     return `[${rkey}]`;
   }
 
-  const truncated = truncateTitle(text.replace(/\n/g, " "), 60);
-  const safeName = sanitizeFilename(truncated);
+  const truncated = stringHelpers.truncateTitle(text.replace(/\n/g, " "), 60);
+  const safeName = stringHelpers.sanitizeFilename(truncated);
   return safeName ? `${safeName} [${rkey}]` : `[${rkey}]`;
 }
 
@@ -2783,7 +2754,7 @@ async function downloadBlueskyPostToFolder(
   const { helpers, logger } = context;
 
   await helpers.io.ensureDir(postDir);
-  writeBlueskyPostNfo(post, sourceUrl, postDir, logger);
+  writeBlueskyPostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape);
 
   // Save replies if thread data is available
   if (thread) {
@@ -2791,7 +2762,7 @@ async function downloadBlueskyPostToFolder(
   }
 
   const hasVideo = post.embed?.$type === "app.bsky.embed.video#view";
-  const mediaItems = extractBlueskyMediaItems(post, helpers.string.sanitizeFilename);
+  const mediaItems = extractBlueskyMediaItems(post, helpers.string);
 
   if (mediaItems.length === 0) {
     return { downloaded: 0, skipped: 0, hasVideo };
@@ -2854,7 +2825,7 @@ async function handleBlueskyProfile(
   let totalArchived = 0;
 
   for (const post of posts) {
-    const folderName = blueskyPostFolderName(post, helpers.string.sanitizeFilename);
+    const folderName = blueskyPostFolderName(post, helpers.string);
     const postDir = path.join(handleDir, folderName);
 
     // Fetch thread with replies if the post has any
@@ -2920,7 +2891,7 @@ async function handleBlueskyPost(
   logger.info(`Fetching Bluesky post by @${handle}, rkey: ${rkey}`);
   const { post, thread } = await fetchBlueskyPostThread(handle, rkey, logger, 100);
 
-  const folderName = blueskyPostFolderName(post, helpers.string.sanitizeFilename);
+  const folderName = blueskyPostFolderName(post, helpers.string);
   const handleDir = path.join(rootDirectory, saveDir, blueskySubfolder, post.author.handle);
   const postDir = path.join(handleDir, folderName);
 
@@ -2954,7 +2925,7 @@ async function handleBlueskyPost(
 
 function twitterPostFolderName(
   tweet: TwitterTweet,
-  sanitizeFilename: (s: string) => string
+  stringHelpers: StringHelpers
 ): string {
   const id = tweet.id_str;
   const text = tweet.text.trim();
@@ -2963,8 +2934,8 @@ function twitterPostFolderName(
     return `[${id}]`;
   }
 
-  const truncated = truncateTitle(text.replace(/\n/g, " "), 60);
-  const safeName = sanitizeFilename(truncated);
+  const truncated = stringHelpers.truncateTitle(text.replace(/\n/g, " "), 60);
+  const safeName = stringHelpers.sanitizeFilename(truncated);
   return safeName ? `${safeName} [${id}]` : `[${id}]`;
 }
 
@@ -2988,12 +2959,12 @@ async function handleTwitterPost(
     };
   }
 
-  const folderName = twitterPostFolderName(tweet, helpers.string.sanitizeFilename);
+  const folderName = twitterPostFolderName(tweet, helpers.string);
   const userDir = path.join(rootDirectory, saveDir, twitterSubfolder, tweet.user.screen_name);
   const postDir = path.join(userDir, folderName);
 
   await helpers.io.ensureDir(postDir);
-  writeTwitterPostNfo(tweet, sourceUrl, postDir, logger);
+  writeTwitterPostNfo(tweet, sourceUrl, postDir, logger, helpers.string.xmlEscape);
 
   // Save quote tweet as a separate JSON if present
   if (tweet.quoted_tweet) {

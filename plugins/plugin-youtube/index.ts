@@ -1,6 +1,5 @@
 import path from "path";
 import fs from "fs";
-import { exec } from "child_process";
 import { urlPatterns } from "./sites";
 import { pluginSettings } from "./settings";
 
@@ -26,12 +25,29 @@ interface PluginHelpers {
     listFiles: (dirPath: string, pattern?: RegExp) => Promise<string[]>;
     moveFile: (src: string, dest: string) => Promise<void>;
   };
-  url: unknown;
+  url: {
+    resolveOutputDir: (
+      url: string,
+      rootDir: string,
+      defaultFolder: string,
+      siteDirectoriesJson: string,
+      logger: PluginLogger,
+      opts?: { prependDefaultFolder?: boolean }
+    ) => string;
+  };
+  process: {
+    execAsync: (
+      cmd: string,
+      opts?: { maxBuffer?: number; timeout?: number }
+    ) => Promise<{ stdout: string; stderr: string }>;
+  };
   string: {
     sanitizeFilename: (input: string) => string;
     slugify: (input: string) => string;
     padNumber: (num: number, length: number) => string;
     removeNumbersAndSpaces: (input: string) => string;
+    shellEscape: (arg: string) => string;
+    xmlEscape: (str: string) => string;
   };
 }
 
@@ -68,32 +84,6 @@ function definePlugin(plugin: ArchiverPlugin): ArchiverPlugin {
 // Helpers
 // =========================================
 
-function execAsync(
-  cmd: string
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(
-          Object.assign(error, {
-            stdout: stdout?.toString() ?? "",
-            stderr: stderr?.toString() ?? "",
-          })
-        );
-      } else {
-        resolve({
-          stdout: stdout?.toString() ?? "",
-          stderr: stderr?.toString() ?? "",
-        });
-      }
-    });
-  });
-}
-
-function shellEscape(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
 /**
  * Normalize a video title for display.
  * Strips leading/trailing whitespace and control characters.
@@ -119,16 +109,6 @@ function titleFromStem(stem: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-/** Escape a string for safe inclusion in XML text content. */
-function xmlEscape(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 /** Format a yt-dlp date string (YYYYMMDD) to YYYY-MM-DD. */
@@ -166,7 +146,8 @@ function writeNfo(
   videoFile: string,
   sourceUrl: string,
   meta: Record<string, unknown> | null,
-  logger: PluginLogger
+  logger: PluginLogger,
+  xmlEscape: (str: string) => string
 ): void {
   const ext = path.extname(videoFile);
   const base = videoFile.slice(0, -ext.length);
@@ -338,47 +319,6 @@ function writeNfo(
   }
 }
 
-/**
- * Resolve the output directory for a download URL.
- * Checks the per-site directory overrides first, then falls back to the default library folder.
- */
-function resolveOutputDir(
-  url: string,
-  rootDirectory: string,
-  defaultFolder: string,
-  settings: PluginSettingsAccessor,
-  logger: PluginLogger
-): string {
-  const raw = settings.get("site_directories");
-  if (!raw) return path.join(rootDirectory, defaultFolder);
-
-  let siteMap: Record<string, string>;
-  try {
-    siteMap = JSON.parse(raw);
-  } catch {
-    logger.warn(
-      "site_directories setting is not valid JSON, using default folder"
-    );
-    return path.join(rootDirectory, defaultFolder);
-  }
-
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname;
-  } catch {
-    return path.join(rootDirectory, defaultFolder);
-  }
-
-  for (const [domain, folder] of Object.entries(siteMap)) {
-    if (hostname === domain || hostname.endsWith("." + domain)) {
-      logger.info(`Site directory override: ${domain} -> ${folder}`);
-      return path.join(rootDirectory, folder);
-    }
-  }
-
-  return path.join(rootDirectory, defaultFolder);
-}
-
 // =========================================
 // Plugin
 // =========================================
@@ -394,6 +334,9 @@ const plugin = definePlugin({
 
   async download(context: DownloadContext): Promise<DownloadResult> {
     const { url, rootDirectory, helpers, logger, settings } = context;
+    const { shellEscape, xmlEscape } = helpers.string;
+    const { execAsync } = helpers.process;
+    const { resolveOutputDir } = helpers.url;
 
     logger.info(`Starting yt-dlp download for: ${url}`);
 
@@ -414,8 +357,9 @@ const plugin = definePlugin({
       url,
       rootDirectory,
       libraryFolder,
-      settings,
-      logger
+      settings.get("site_directories"),
+      logger,
+      { prependDefaultFolder: false }
     );
     await helpers.io.ensureDir(outputDir);
 
@@ -604,7 +548,7 @@ const plugin = definePlugin({
         const meta = readInfoJson(finalFile);
 
         // Write NFO sidecar with full metadata
-        writeNfo(finalFile, url, meta, logger);
+        writeNfo(finalFile, url, meta, logger, xmlEscape);
       }
 
       return {
