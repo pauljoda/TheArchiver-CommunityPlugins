@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc && node dist/manifest-gen.js",
-    "deploy": "tsc && node dist/manifest-gen.js && mkdir -p ../TheArchiver/plugins/plugin-youtube && cp dist/index.js dist/sites.js dist/settings.js manifest.json ../TheArchiver/plugins/plugin-youtube/ && cp -r yt-dlp-plugins ../TheArchiver/plugins/plugin-youtube/",
+    "deploy": "tsc && node dist/manifest-gen.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-youtube && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-youtube/ && cp -r yt-dlp-plugins $HOME/Dev/TheArchiver/plugins/plugin-youtube/",
     "package": "tsc && node dist/manifest-gen.js && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
   },
   "devDependencies": {
