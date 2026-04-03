@@ -327,30 +327,41 @@ export class RedditApp {
       if (isImg) imgIdx++;
     }
 
-    // Batch render
+    // Batch render — no async API calls per item to avoid overwhelming the server
     let loaded = 0;
 
-    const renderBatch = async (): Promise<void> => {
+    const renderBatch = (): void => {
       const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
       for (const item of batch) {
         if (item.type === "dir") {
-          // Peek into dir for preview image and item count
-          let previewUrl: string | null = null;
-          let itemCount = 0;
-          try {
-            const children = await this.api.fetchFiles(item.entry.path);
-            itemCount = children.length;
-            const firstImg = children.find(
-              (c) => !c.isDirectory && isImageFile(c.name)
-            );
-            if (firstImg) previewUrl = getFileUrl(firstImg.path);
-          } catch { /* ignore */ }
-
-          feed.appendChild(
-            renderFolderCard(item.entry, previewUrl, itemCount, (p) =>
-              this.api.navigate(p)
-            )
+          const card = renderFolderCard(item.entry, null, 0, (p) =>
+            this.api.navigate(p)
           );
+          feed.appendChild(card);
+
+          // Lazy-load preview when folder card scrolls into view
+          const observer = new IntersectionObserver(
+            (entries) => {
+              if (entries[0].isIntersecting) {
+                observer.disconnect();
+                this.api.fetchFiles(item.entry.path).then((children) => {
+                  const firstImg = children.find(
+                    (c) => !c.isDirectory && isImageFile(c.name)
+                  );
+                  const thumb = card.querySelector(".gallery-folder-thumb") as HTMLElement;
+                  if (firstImg && thumb) {
+                    thumb.innerHTML = `<img src="${getFileUrl(firstImg.path)}" alt="" loading="lazy" />`;
+                  }
+                  const badge = card.querySelector(".gallery-folder-badge");
+                  if (badge) {
+                    badge.textContent = `${children.length} item${children.length !== 1 ? "s" : ""}`;
+                  }
+                }).catch(() => {});
+              }
+            },
+            { rootMargin: "200px" }
+          );
+          observer.observe(card);
         } else {
           feed.appendChild(
             renderMediaItem(
@@ -377,7 +388,7 @@ export class RedditApp {
       }
     };
 
-    await renderBatch();
+    renderBatch();
   }
 
   onPathChange(newPath: string, api: PluginViewAPI): void {
