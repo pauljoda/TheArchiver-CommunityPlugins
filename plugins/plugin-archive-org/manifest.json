@@ -1,6 +1,6 @@
 {
   "name": "Archive.org",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Download content from Archive.org with optional authentication",
   "author": "TheArchiver",
   "urlPatterns": ["https://archive.org"],

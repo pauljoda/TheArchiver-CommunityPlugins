@@ -5,7 +5,7 @@
     {
       "id": "archive-org",
       "name": "Archive.org",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "description": "Download content from Archive.org with optional authentication",
       "author": "TheArchiver",
       "downloadFile": "plugin-archive-org.zip",
@@ -14,8 +14,8 @@
     {
       "id": "gallery-dl",
       "name": "gallery-dl",
-      "version": "1.0.0",
-      "description": "Download images and media from Pixiv, Twitter, Instagram, DeviantArt, Danbooru, ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
+      "version": "2.0.0",
+      "description": "Download images and media from Pixiv, Instagram, DeviantArt, Danbooru, ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
       "author": "TheArchiver",
       "downloadFile": "plugin-gallery-dl.zip",
       "path": "plugins/plugin-gallery-dl"
@@ -23,7 +23,7 @@
     {
       "id": "socials",
       "name": "Socials",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Download images, galleries, and metadata from social media platforms",
       "author": "TheArchiver",
       "downloadFile": "plugin-social.zip",
@@ -32,7 +32,7 @@
     {
       "id": "yt-dlp",
       "name": "yt-dlp",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",
       "author": "TheArchiver",
       "downloadFile": "plugin-youtube.zip",
