@@ -1,228 +1,369 @@
 import type { PluginViewAPI, FileEntry } from "./types";
 import { injectStyles } from "./styles";
-import { renderSubredditGrid } from "./subreddit-grid";
-import { renderGalleryTimeline } from "./gallery-timeline";
-import { renderPostDetail } from "./post-detail";
-import { renderBlueskyPostDetail } from "./bluesky-post-detail";
-import { renderTwitterPostDetail } from "./twitter-post-detail";
-import { detectNfoPlatform } from "./nfo-parser";
-
-/** Files that are directory metadata, not post content */
-const METADATA_FILES = new Set([
-  "icon.jpg",
-  "icon.png",
-  "icon.webp",
-  ".no-icon",
-]);
-
-/**
- * Determine what kind of directory we're looking at by inspecting its contents.
- *
- * - "root": contains only subdirectories (+ optional metadata like icon.jpg)
- * - "post-list": contains subdirectories that are posts (have Post.nfo or media)
- * - "post": contains Post.nfo, Comments.json, or media files — this IS a post
- */
-type ViewMode = "root" | "post-list" | "post";
-type Platform = "reddit" | "bluesky" | "twitter" | "unknown";
-
-interface ViewInfo {
-  mode: ViewMode;
-  platform: Platform;
-}
+import { isImageFile, isVideoFile, getFileUrl } from "./card-helpers";
 
 const MEDIA_RE = /\.(jpe?g|png|gif|webp|bmp|avif|mp4|m4v|webm|mov|avi|mkv)$/i;
+const BATCH_SIZE = 30;
 
-async function detectViewInfo(
-  api: PluginViewAPI,
-  dirPath: string,
-  entries: FileEntry[]
-): Promise<ViewInfo> {
-  const dirs = entries.filter((e) => e.isDirectory);
-  const contentFiles = entries.filter(
-    (e) => !e.isDirectory && !METADATA_FILES.has(e.name)
-  );
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
 
-  const hasNfo = contentFiles.some((f) => f.name === "Post.nfo");
-  const hasComments = contentFiles.some((f) => f.name === "Comments.json");
-  const hasMedia = contentFiles.some((f) => MEDIA_RE.test(f.name));
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${(bytes / 1073741824).toFixed(1)} GB`;
+}
 
-  // A directory is a single "post" only if it has Post.nfo or Comments.json
-  // (explicit metadata from social enrichment). Media alone is a gallery.
-  if (hasNfo || hasComments) {
-    const platform = hasNfo
-      ? (await detectNfoPlatform(api, dirPath)) || "reddit"
-      : "reddit";
-    return { mode: "post", platform };
-  }
-
-  if (dirs.length === 0) {
-    // Flat gallery: media files without Post.nfo and no subdirectories
-    if (hasMedia) {
-      return { mode: "post-list", platform: "unknown" };
-    }
-    return { mode: "root", platform: "unknown" };
-  }
-
-  // Has subdirectories — sample the first child to determine mode
+function formatRelativeDate(dateStr: string): string {
   try {
-    const firstChild = dirs[0];
-    const childEntries = await api.fetchFiles(firstChild.path);
-    const childContentFiles = childEntries.filter(
-      (e) => !e.isDirectory && !METADATA_FILES.has(e.name)
-    );
-
-    const childHasNfo = childContentFiles.some(
-      (e) => e.name === "Post.nfo"
-    );
-    const childHasMedia = childContentFiles.some((e) => MEDIA_RE.test(e.name));
-
-    if (childHasNfo || childHasMedia) {
-      const platform = childHasNfo
-        ? (await detectNfoPlatform(api, firstChild.path)) || "reddit"
-        : "unknown";
-      return { mode: "post-list", platform };
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "";
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDay = Math.floor(diffMs / 86400000);
+    if (diffDay > 30) {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+      });
     }
-
-    if (childContentFiles.length === 0) {
-      // Subdirs are empty; if the parent has media, treat as flat gallery
-      if (hasMedia) return { mode: "post-list", platform: "unknown" };
-      return { mode: "root", platform: "unknown" };
-    }
-
-    return { mode: "post-list", platform: "unknown" };
+    if (diffDay > 0) return `${diffDay}d ago`;
+    const diffHour = Math.floor(diffMs / 3600000);
+    if (diffHour > 0) return `${diffHour}h ago`;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin > 0) return `${diffMin}m ago`;
+    return "just now";
   } catch {
-    return { mode: "root", platform: "unknown" };
+    return "";
   }
 }
 
+// ── Lightbox ──────────────────────────────────────────────
+function createLightbox(
+  images: { src: string; name: string }[],
+  startIndex: number
+): HTMLElement {
+  let idx = startIndex;
+  const overlay = document.createElement("div");
+  overlay.className = "gallery-lightbox";
+
+  function update(): void {
+    overlay.innerHTML = `
+      <button class="gallery-lightbox-close" aria-label="Close">&times;</button>
+      ${images.length > 1 ? `<button class="gallery-lightbox-nav gallery-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
+      <img src="${images[idx].src}" alt="${escapeHtml(images[idx].name)}" />
+      ${images.length > 1 ? `<button class="gallery-lightbox-nav gallery-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
+      ${images.length > 1 ? `<div class="gallery-lightbox-counter">${idx + 1} / ${images.length}</div>` : ""}
+    `;
+    overlay.querySelector(".gallery-lightbox-close")!.addEventListener("click", close);
+    overlay.querySelector(".gallery-lightbox-prev")?.addEventListener("click", () => { idx = (idx - 1 + images.length) % images.length; update(); });
+    overlay.querySelector(".gallery-lightbox-next")?.addEventListener("click", () => { idx = (idx + 1) % images.length; update(); });
+  }
+
+  function close(): void {
+    overlay.remove();
+    document.removeEventListener("keydown", handleKey);
+  }
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  const handleKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") close();
+    else if (e.key === "ArrowLeft") { idx = (idx - 1 + images.length) % images.length; update(); }
+    else if (e.key === "ArrowRight") { idx = (idx + 1) % images.length; update(); }
+  };
+  document.addEventListener("keydown", handleKey);
+  update();
+  return overlay;
+}
+
+// ── Breadcrumb ────────────────────────────────────────────
 function renderBreadcrumb(
   currentPath: string,
   trackedDirectory: string,
   navigate: (path: string) => void
 ): HTMLElement {
-  const breadcrumb = document.createElement("div");
-  breadcrumb.className = "reddit-breadcrumb";
+  const bc = document.createElement("div");
+  bc.className = "gallery-breadcrumb";
 
   const tracked = trackedDirectory.replace(/\/+$/, "");
   const current = currentPath.replace(/\/+$/, "");
 
   const rootLink = document.createElement("span");
-  rootLink.className = "reddit-breadcrumb-link";
+  rootLink.className = "gallery-breadcrumb-link";
   rootLink.textContent = tracked;
   rootLink.addEventListener("click", () => navigate(tracked));
-  breadcrumb.appendChild(rootLink);
+  bc.appendChild(rootLink);
 
   if (current !== tracked) {
     const relative = current.startsWith(tracked + "/")
       ? current.slice(tracked.length + 1)
       : "";
-    const parts = relative.split("/").filter(Boolean);
-
-    parts.forEach((part, i) => {
+    relative.split("/").filter(Boolean).forEach((part, i, parts) => {
       const sep = document.createElement("span");
-      sep.className = "reddit-breadcrumb-sep";
-      sep.textContent = "/";
-      breadcrumb.appendChild(sep);
+      sep.className = "gallery-breadcrumb-sep";
+      sep.textContent = " / ";
+      bc.appendChild(sep);
 
       if (i < parts.length - 1) {
         const link = document.createElement("span");
-        link.className = "reddit-breadcrumb-link";
+        link.className = "gallery-breadcrumb-link";
         link.textContent = part;
         const linkPath = tracked + "/" + parts.slice(0, i + 1).join("/");
         link.addEventListener("click", () => navigate(linkPath));
-        breadcrumb.appendChild(link);
+        bc.appendChild(link);
       } else {
         const span = document.createElement("span");
-        span.className = "reddit-breadcrumb-current";
+        span.className = "gallery-breadcrumb-current";
         span.textContent = part;
-        breadcrumb.appendChild(span);
+        bc.appendChild(span);
       }
     });
   }
 
-  return breadcrumb;
+  return bc;
 }
 
+// ── Folder card ───────────────────────────────────────────
+function renderFolderCard(
+  dir: FileEntry,
+  previewUrl: string | null,
+  itemCount: number,
+  navigate: (path: string) => void
+): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "gallery-folder-card";
+  card.addEventListener("click", () => navigate(dir.path));
+
+  const thumb = document.createElement("div");
+  thumb.className = "gallery-folder-thumb";
+  if (previewUrl) {
+    thumb.innerHTML = `<img src="${previewUrl}" alt="" loading="lazy" />`;
+  } else {
+    thumb.innerHTML = `<div class="gallery-folder-icon">📁</div>`;
+  }
+
+  const countBadge = document.createElement("div");
+  countBadge.className = "gallery-folder-badge";
+  countBadge.textContent = `${itemCount} item${itemCount !== 1 ? "s" : ""}`;
+  thumb.appendChild(countBadge);
+
+  const label = document.createElement("div");
+  label.className = "gallery-folder-label";
+  label.textContent = dir.name;
+
+  card.appendChild(thumb);
+  card.appendChild(label);
+  return card;
+}
+
+// ── Media item (image or video in the feed) ───────────────
+function renderMediaItem(
+  file: FileEntry,
+  allImages: { src: string; name: string }[],
+  imageIndex: number,
+  openFile: (path: string) => void
+): HTMLElement {
+  const item = document.createElement("div");
+  item.className = "gallery-media-item";
+
+  if (isVideoFile(file.name)) {
+    const video = document.createElement("video");
+    video.className = "gallery-media-video";
+    video.src = getFileUrl(file.path);
+    video.controls = true;
+    video.preload = "metadata";
+    if (file.name.includes(".gif.") || file.name.endsWith(".gif")) {
+      video.autoplay = true;
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+    }
+    item.appendChild(video);
+  } else {
+    const img = document.createElement("img");
+    img.className = "gallery-media-img";
+    img.src = getFileUrl(file.path);
+    img.alt = file.name;
+    img.loading = "lazy";
+    img.addEventListener("click", () => {
+      document.body.appendChild(createLightbox(allImages, imageIndex));
+    });
+    item.appendChild(img);
+  }
+
+  // Caption
+  const caption = document.createElement("div");
+  caption.className = "gallery-media-caption";
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "gallery-media-name";
+  nameSpan.textContent = file.name;
+  const metaSpan = document.createElement("span");
+  metaSpan.className = "gallery-media-meta";
+  const parts: string[] = [];
+  if (file.size > 0) parts.push(formatFileSize(file.size));
+  const dateStr = formatRelativeDate(file.modifiedAt);
+  if (dateStr) parts.push(dateStr);
+  metaSpan.textContent = parts.join(" · ");
+  caption.appendChild(nameSpan);
+  caption.appendChild(metaSpan);
+  item.appendChild(caption);
+
+  return item;
+}
+
+// ── Main app ──────────────────────────────────────────────
 export class RedditApp {
   private container: HTMLElement;
   private api: PluginViewAPI;
   private contentEl: HTMLElement;
-  private cleanupView?: () => void;
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
     this.api = api;
-
     this.container.innerHTML = "";
-    this.container.classList.add("reddit-view");
+    this.container.classList.add("gallery-view");
     injectStyles(this.container);
-
     this.contentEl = document.createElement("div");
     this.container.appendChild(this.contentEl);
-
     this.renderCurrentPath();
   }
 
   async renderCurrentPath(): Promise<void> {
     const { currentPath, trackedDirectory } = this.api;
-    this.cleanupView?.();
-    this.cleanupView = undefined;
-
     this.contentEl.innerHTML = "";
 
     const tracked = trackedDirectory.replace(/\/+$/, "");
     const current = currentPath.replace(/\/+$/, "");
-    const isRoot = current === tracked;
 
-    if (!isRoot) {
-      const breadcrumb = renderBreadcrumb(
-        currentPath,
-        trackedDirectory,
-        (path) => this.api.navigate(path)
+    if (current !== tracked) {
+      this.contentEl.appendChild(
+        renderBreadcrumb(currentPath, trackedDirectory, (p) => this.api.navigate(p))
       );
-      this.contentEl.appendChild(breadcrumb);
     }
 
     const viewContainer = document.createElement("div");
-    viewContainer.innerHTML = `<div class="reddit-loading">Loading...</div>`;
+    viewContainer.innerHTML = `<div class="gallery-loading">Loading...</div>`;
     this.contentEl.appendChild(viewContainer);
 
     const entries = await this.api.fetchFiles(currentPath);
-    const viewInfo = await detectViewInfo(this.api, currentPath, entries);
-
     viewContainer.innerHTML = "";
 
-    switch (viewInfo.mode) {
-      case "root":
-        this.cleanupView =
-          (await renderSubredditGrid(
-            viewContainer,
-            this.api,
-            currentPath,
-            (path) => this.api.navigate(path)
-          )) || undefined;
-        break;
+    const dirs = entries.filter((e) => e.isDirectory);
+    const mediaFiles = entries.filter(
+      (e) => !e.isDirectory && MEDIA_RE.test(e.name)
+    );
 
-      case "post-list":
-        await renderGalleryTimeline(
-          viewContainer,
-          this.api,
-          currentPath,
-          viewInfo.platform
-        );
-        break;
+    // Header
+    const dirName = currentPath.split("/").pop() || "";
+    const header = document.createElement("div");
+    header.className = "gallery-header";
+    const totalItems = dirs.length + mediaFiles.length;
+    header.innerHTML = `
+      <h2 class="gallery-title">${escapeHtml(dirName)}</h2>
+      <span class="gallery-count">${totalItems} item${totalItems !== 1 ? "s" : ""}</span>
+    `;
+    viewContainer.appendChild(header);
 
-      case "post":
-        if (viewInfo.platform === "bluesky") {
-          await renderBlueskyPostDetail(viewContainer, this.api, currentPath);
-        } else if (viewInfo.platform === "twitter") {
-          await renderTwitterPostDetail(viewContainer, this.api, currentPath);
-        } else {
-          await renderPostDetail(viewContainer, this.api, currentPath);
-        }
-        break;
-
+    if (totalItems === 0) {
+      viewContainer.innerHTML += `
+        <div class="gallery-empty">
+          <div class="gallery-empty-icon">📂</div>
+          <span>No media found</span>
+        </div>
+      `;
+      return;
     }
+
+    const feed = document.createElement("div");
+    feed.className = "gallery-feed";
+    viewContainer.appendChild(feed);
+
+    // Build image list for lightbox navigation (images only, not videos)
+    const allImages = mediaFiles
+      .filter((f) => isImageFile(f.name))
+      .map((f) => ({ src: getFileUrl(f.path), name: f.name }));
+
+    // Combine dirs and media into a single ordered list:
+    // Directories first, then media files
+    type FeedItem =
+      | { type: "dir"; entry: FileEntry }
+      | { type: "media"; entry: FileEntry; imageIndex: number };
+
+    const feedItems: FeedItem[] = [];
+
+    // Add folders
+    for (const dir of dirs) {
+      feedItems.push({ type: "dir", entry: dir });
+    }
+
+    // Add media files with their image index for lightbox
+    let imgIdx = 0;
+    for (const file of mediaFiles) {
+      const isImg = isImageFile(file.name);
+      feedItems.push({
+        type: "media",
+        entry: file,
+        imageIndex: isImg ? imgIdx : -1,
+      });
+      if (isImg) imgIdx++;
+    }
+
+    // Batch render
+    let loaded = 0;
+
+    const renderBatch = async (): Promise<void> => {
+      const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
+      for (const item of batch) {
+        if (item.type === "dir") {
+          // Peek into dir for preview image and item count
+          let previewUrl: string | null = null;
+          let itemCount = 0;
+          try {
+            const children = await this.api.fetchFiles(item.entry.path);
+            itemCount = children.length;
+            const firstImg = children.find(
+              (c) => !c.isDirectory && isImageFile(c.name)
+            );
+            if (firstImg) previewUrl = getFileUrl(firstImg.path);
+          } catch { /* ignore */ }
+
+          feed.appendChild(
+            renderFolderCard(item.entry, previewUrl, itemCount, (p) =>
+              this.api.navigate(p)
+            )
+          );
+        } else {
+          feed.appendChild(
+            renderMediaItem(
+              item.entry,
+              allImages,
+              item.imageIndex,
+              (p) => this.api.openFile(p)
+            )
+          );
+        }
+      }
+      loaded += batch.length;
+
+      // Load more button
+      const existing = viewContainer.querySelector(".gallery-load-more");
+      if (existing) existing.remove();
+
+      if (loaded < feedItems.length) {
+        const btn = document.createElement("button");
+        btn.className = "gallery-load-more";
+        btn.textContent = `Load more (${feedItems.length - loaded} remaining)`;
+        btn.addEventListener("click", () => renderBatch());
+        viewContainer.appendChild(btn);
+      }
+    };
+
+    await renderBatch();
   }
 
   onPathChange(newPath: string, api: PluginViewAPI): void {
@@ -231,9 +372,7 @@ export class RedditApp {
   }
 
   destroy(): void {
-    this.cleanupView?.();
-    this.cleanupView = undefined;
-    this.container.classList.remove("reddit-view");
+    this.container.classList.remove("gallery-view");
     this.container.innerHTML = "";
   }
 }
