@@ -28,6 +28,7 @@
     "distribute:youtube": "node scripts/distribute.mjs plugin-youtube",
 
     "dev:link": "node scripts/link-dev.mjs",
-    "dev:unlink": "node scripts/unlink-dev.mjs"
+    "dev:unlink": "node scripts/unlink-dev.mjs",
+    "dev:build-link": "npm run build && npm run dev:link"
   }
 }
