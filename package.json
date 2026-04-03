@@ -5,6 +5,29 @@
   "description": "Community plugin repository for TheArchiver",
   "scripts": {
     "build": "node scripts/build-all.mjs",
-    "generate-manifest": "node scripts/generate-manifest.mjs"
+    "generate-manifest": "node scripts/generate-manifest.mjs",
+
+    "build:archive-org": "npm run build --prefix plugins/plugin-archive-org",
+    "build:gallery-dl": "npm run build --prefix plugins/plugin-gallery-dl",
+    "build:social": "npm run build --prefix plugins/plugin-social",
+    "build:youtube": "npm run build --prefix plugins/plugin-youtube",
+
+    "deploy:archive-org": "npm run deploy --prefix plugins/plugin-archive-org",
+    "deploy:gallery-dl": "npm run deploy --prefix plugins/plugin-gallery-dl",
+    "deploy:social": "npm run deploy --prefix plugins/plugin-social",
+    "deploy:youtube": "npm run deploy --prefix plugins/plugin-youtube",
+
+    "package:archive-org": "npm run package --prefix plugins/plugin-archive-org",
+    "package:gallery-dl": "npm run package --prefix plugins/plugin-gallery-dl",
+    "package:social": "npm run package --prefix plugins/plugin-social",
+    "package:youtube": "npm run package --prefix plugins/plugin-youtube",
+
+    "distribute:archive-org": "node scripts/distribute.mjs plugin-archive-org",
+    "distribute:gallery-dl": "node scripts/distribute.mjs plugin-gallery-dl",
+    "distribute:social": "node scripts/distribute.mjs plugin-social",
+    "distribute:youtube": "node scripts/distribute.mjs plugin-youtube",
+
+    "dev:link": "node scripts/link-dev.mjs",
+    "dev:unlink": "node scripts/unlink-dev.mjs"
   }
 }
