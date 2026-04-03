@@ -961,27 +961,56 @@ const CSS = `
   color: oklch(0.7 0.15 15);
 }
 
-/* ── Bluesky Load More ── */
-.bluesky-load-more {
-  display: block;
-  width: 100%;
+/* ── Bluesky Controls ── */
+.bluesky-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   max-width: 600px;
-  margin: 1rem auto;
-  padding: 0.75rem;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  color: var(--foreground);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  margin: 0 auto 1rem;
 }
 
-.bluesky-load-more:hover {
+.bluesky-controls .timeline-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.bluesky-controls .timeline-search:focus {
   border-color: var(--primary);
-  background: var(--card);
+}
+
+.bluesky-controls .timeline-search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.bluesky-controls .timeline-sort {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.bluesky-controls .timeline-sort:hover {
+  border-color: var(--primary);
 }
 
 /* ── Bluesky Post Detail ── */
@@ -1652,28 +1681,41 @@ const CSS = `
 .rdt-score-down { color: oklch(0.7 0.15 25);  }
 .rdt-score-neutral { color: var(--muted-foreground); }
 
-/* Load more button */
-.rdt-load-more {
-  display: block;
-  width: 100%;
+/* Reddit controls bar */
+.rdt-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   max-width: 680px;
-  margin: 1.5rem auto;
-  padding: 0.75rem 1.5rem;
-  background: var(--muted);
-  color: var(--foreground);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  margin: 0 auto 1rem;
 }
 
-.rdt-load-more:hover {
+.rdt-controls .timeline-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.rdt-controls .timeline-search:focus {
   border-color: var(--primary);
-  background: var(--card);
+}
+
+.rdt-controls .timeline-search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.timeline-no-results {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 2rem 1rem;
 }
 `;

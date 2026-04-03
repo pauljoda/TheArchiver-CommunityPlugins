@@ -327,10 +327,19 @@ export class RedditApp {
       if (isImg) imgIdx++;
     }
 
-    // Batch render — no async API calls per item to avoid overwhelming the server
+    // Batch render with infinite scroll
     let loaded = 0;
+    let isRendering = false;
+
+    // Sentinel for infinite scroll
+    const sentinel = document.createElement("div");
+    sentinel.style.height = "1px";
+    viewContainer.appendChild(sentinel);
 
     const renderBatch = (): void => {
+      if (isRendering) return;
+      isRendering = true;
+
       const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
       for (const item of batch) {
         if (item.type === "dir") {
@@ -340,10 +349,10 @@ export class RedditApp {
           feed.appendChild(card);
 
           // Lazy-load preview when folder card scrolls into view
-          const observer = new IntersectionObserver(
+          const previewObserver = new IntersectionObserver(
             (entries) => {
               if (entries[0].isIntersecting) {
-                observer.disconnect();
+                previewObserver.disconnect();
                 this.api.fetchFiles(item.entry.path).then((children) => {
                   const firstImg = children.find(
                     (c) => !c.isDirectory && isImageFile(c.name)
@@ -361,7 +370,7 @@ export class RedditApp {
             },
             { rootMargin: "200px" }
           );
-          observer.observe(card);
+          previewObserver.observe(card);
         } else {
           feed.appendChild(
             renderMediaItem(
@@ -375,18 +384,22 @@ export class RedditApp {
       }
       loaded += batch.length;
 
-      // Load more button
-      const existing = viewContainer.querySelector(".gallery-load-more");
-      if (existing) existing.remove();
+      // Move sentinel after the last rendered item
+      viewContainer.appendChild(sentinel);
 
-      if (loaded < feedItems.length) {
-        const btn = document.createElement("button");
-        btn.className = "gallery-load-more";
-        btn.textContent = `Load more (${feedItems.length - loaded} remaining)`;
-        btn.addEventListener("click", () => renderBatch());
-        viewContainer.appendChild(btn);
-      }
+      isRendering = false;
     };
+
+    // IntersectionObserver for infinite scroll
+    const scrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isRendering && loaded < feedItems.length) {
+          renderBatch();
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    scrollObserver.observe(sentinel);
 
     renderBatch();
   }

@@ -263,6 +263,53 @@ function renderPostCard(
 
 const BATCH_SIZE = 20;
 
+interface PostStub {
+  path: string;
+  metadata: BlueskyPostMetadata;
+}
+
+function debounce(fn: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+async function enrichBlueskyPost(
+  api: PluginViewAPI,
+  stub: PostStub
+): Promise<TimelinePost> {
+  const files = await api.fetchFiles(stub.path);
+
+  const images = files.filter(
+    (f) =>
+      !f.isDirectory &&
+      isImageFile(f.name) &&
+      f.name !== "Video Thumbnail.jpg" &&
+      f.name !== "Thumbnail.jpg"
+  );
+
+  const videoFile = files.find(
+    (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+  );
+
+  const thumbnailFile = files.find(
+    (f) => !f.isDirectory && f.name === "Thumbnail.jpg"
+  );
+
+  return { path: stub.path, metadata: stub.metadata, images, videoFile, thumbnailFile };
+}
+
+function matchesBlueskySearch(stub: PostStub, term: string): boolean {
+  const m = stub.metadata;
+  return (
+    m.text.toLowerCase().includes(term) ||
+    m.authorHandle.toLowerCase().includes(term) ||
+    (m.displayName || "").toLowerCase().includes(term)
+  );
+}
+
 export async function renderBlueskyTimeline(
   container: HTMLElement,
   api: PluginViewAPI,
@@ -292,56 +339,44 @@ export async function renderBlueskyTimeline(
     ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
     : null;
 
-  // Load all post metadata in parallel
-  const postPromises = postDirs.map(async (dir) => {
-    const [metadata, files] = await Promise.all([
-      fetchBlueskyPostMetadata(api, dir.path),
-      api.fetchFiles(dir.path),
-    ]);
+  // Load all metadata upfront (lightweight — just Post.nfo parsing)
+  const stubs = (
+    await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchBlueskyPostMetadata(api, dir.path);
+        return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+      })
+    )
+  ).filter((s): s is PostStub => s !== null);
 
-    if (!metadata) return null;
+  // Sort/search state
+  let sortMode: "new" | "old" = "new";
+  let searchTerm = "";
 
-    const images = files.filter(
-      (f) =>
-        !f.isDirectory &&
-        isImageFile(f.name) &&
-        f.name !== "Video Thumbnail.jpg" &&
-        f.name !== "Thumbnail.jpg"
+  function applySortAndFilter(): PostStub[] {
+    let list = searchTerm
+      ? stubs.filter((s) => matchesBlueskySearch(s, searchTerm))
+      : [...stubs];
+
+    const dir = sortMode === "new" ? -1 : 1;
+    list.sort(
+      (a, b) =>
+        dir *
+        (new Date(a.metadata.created).getTime() -
+          new Date(b.metadata.created).getTime())
     );
+    return list;
+  }
 
-    const videoFile = files.find(
-      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-    );
-
-    const thumbnailFile = files.find(
-      (f) => !f.isDirectory && f.name === "Thumbnail.jpg"
-    );
-
-    return {
-      path: dir.path,
-      metadata,
-      images,
-      videoFile,
-      thumbnailFile,
-    } as TimelinePost;
-  });
-
-  const allPosts = (await Promise.all(postPromises)).filter(
-    (p): p is TimelinePost => p !== null
-  );
-
-  // Sort by creation date, newest first
-  allPosts.sort((a, b) => {
-    const dateA = new Date(a.metadata.created).getTime();
-    const dateB = new Date(b.metadata.created).getTime();
-    return dateB - dateA;
-  });
+  let filtered = applySortAndFilter();
+  let renderedCount = 0;
+  let isLoading = false;
 
   container.innerHTML = "";
 
   // Profile header
-  if (allPosts.length > 0) {
-    const first = allPosts[0].metadata;
+  if (stubs.length > 0) {
+    const first = stubs[0].metadata;
     const profileHeader = document.createElement("div");
     profileHeader.className = "bluesky-profile-header";
 
@@ -355,50 +390,103 @@ export async function renderBlueskyTimeline(
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml(first.displayName || first.authorHandle)}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml(first.authorHandle)}</span>
-        <span class="bluesky-profile-count">${allPosts.length} archived posts</span>
+        <span class="bluesky-profile-count">${stubs.length} archived posts</span>
       </div>
     `;
     container.appendChild(profileHeader);
   }
 
+  // Controls bar: search + sort
+  const controls = document.createElement("div");
+  controls.className = "bluesky-controls";
+  controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
+    <select class="timeline-sort" aria-label="Sort posts">
+      <option value="new">Newest</option>
+      <option value="old">Oldest</option>
+    </select>
+  `;
+  container.appendChild(controls);
+
+  const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
+  const sortSelect = controls.querySelector<HTMLSelectElement>(".timeline-sort")!;
+
   const timeline = document.createElement("div");
   timeline.className = "bluesky-timeline";
   container.appendChild(timeline);
 
-  let loadedCount = 0;
+  // Sentinel for infinite scroll
+  const sentinel = document.createElement("div");
+  sentinel.style.height = "1px";
+  container.appendChild(sentinel);
 
-  function renderBatch(): void {
-    const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE);
-    for (const post of batch) {
-      const card = renderPostCard(post, api, profileAvatarUrl);
-      if (onNavigate) {
-        card.style.cursor = "pointer";
-        card.addEventListener("click", (e) => {
-          // Don't navigate if clicking a link or image (lightbox)
-          const target = e.target as HTMLElement;
-          if (target.closest("a") || target.closest(".bluesky-post-image")) return;
-          onNavigate(post.path);
-        });
-      }
-      timeline.appendChild(card);
-    }
-    loadedCount += batch.length;
-
-    // Remove existing load more button
-    const existingBtn = container.querySelector(".bluesky-load-more");
-    if (existingBtn) existingBtn.remove();
-
-    // Add load more button if there are more posts
-    if (loadedCount < allPosts.length) {
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.className = "bluesky-load-more";
-      loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-      loadMoreBtn.addEventListener("click", () => {
-        renderBatch();
+  function appendPostCard(post: TimelinePost): void {
+    const card = renderPostCard(post, api, profileAvatarUrl);
+    if (onNavigate) {
+      card.style.cursor = "pointer";
+      card.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("a") || target.closest(".bluesky-post-image")) return;
+        onNavigate(post.path);
       });
-      container.appendChild(loadMoreBtn);
     }
+    timeline.appendChild(card);
   }
 
-  renderBatch();
+  async function renderNextBatch(): Promise<void> {
+    if (isLoading || renderedCount >= filtered.length) return;
+    isLoading = true;
+
+    const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
+    const enriched = await Promise.all(
+      batch.map((stub) => enrichBlueskyPost(api, stub))
+    );
+
+    for (const post of enriched) appendPostCard(post);
+    renderedCount += enriched.length;
+
+    isLoading = false;
+  }
+
+  async function resetAndRender(): Promise<void> {
+    filtered = applySortAndFilter();
+    renderedCount = 0;
+    timeline.innerHTML = "";
+
+    if (filtered.length === 0 && searchTerm) {
+      timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml(searchTerm)}"</div>`;
+      return;
+    }
+
+    await renderNextBatch();
+  }
+
+  // IntersectionObserver for infinite scroll
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+        renderNextBatch();
+      }
+    },
+    { rootMargin: "600px" }
+  );
+  observer.observe(sentinel);
+
+  // Sort handler
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value as "new" | "old";
+    resetAndRender();
+  });
+
+  // Search handler (debounced)
+  searchInput.addEventListener(
+    "input",
+    debounce(() => {
+      searchTerm = searchInput.value.trim().toLowerCase();
+      resetAndRender();
+    }, 300)
+  );
+
+  // Initial render
+  await renderNextBatch();
 }

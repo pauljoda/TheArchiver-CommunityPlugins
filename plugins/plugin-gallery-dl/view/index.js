@@ -582,7 +582,13 @@
         if (isImg) imgIdx++;
       }
       let loaded = 0;
+      let isRendering = false;
+      const sentinel = document.createElement("div");
+      sentinel.style.height = "1px";
+      viewContainer.appendChild(sentinel);
       const renderBatch = () => {
+        if (isRendering) return;
+        isRendering = true;
         const batch = feedItems.slice(loaded, loaded + BATCH_SIZE);
         for (const item of batch) {
           if (item.type === "dir") {
@@ -593,10 +599,10 @@
               (p) => this.api.navigate(p)
             );
             feed.appendChild(card);
-            const observer = new IntersectionObserver(
+            const previewObserver = new IntersectionObserver(
               (entries2) => {
                 if (entries2[0].isIntersecting) {
-                  observer.disconnect();
+                  previewObserver.disconnect();
                   this.api.fetchFiles(item.entry.path).then((children) => {
                     const firstImg = children.find(
                       (c) => !c.isDirectory && isImageFile(c.name)
@@ -615,7 +621,7 @@
               },
               { rootMargin: "200px" }
             );
-            observer.observe(card);
+            previewObserver.observe(card);
           } else {
             feed.appendChild(
               renderMediaItem(
@@ -628,16 +634,18 @@
           }
         }
         loaded += batch.length;
-        const existing = viewContainer.querySelector(".gallery-load-more");
-        if (existing) existing.remove();
-        if (loaded < feedItems.length) {
-          const btn = document.createElement("button");
-          btn.className = "gallery-load-more";
-          btn.textContent = `Load more (${feedItems.length - loaded} remaining)`;
-          btn.addEventListener("click", () => renderBatch());
-          viewContainer.appendChild(btn);
-        }
+        viewContainer.appendChild(sentinel);
+        isRendering = false;
       };
+      const scrollObserver = new IntersectionObserver(
+        (entries2) => {
+          if (entries2[0].isIntersecting && !isRendering && loaded < feedItems.length) {
+            renderBatch();
+          }
+        },
+        { rootMargin: "600px" }
+      );
+      scrollObserver.observe(sentinel);
       renderBatch();
     }
     onPathChange(newPath, api) {

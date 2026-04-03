@@ -286,6 +286,50 @@ function renderPostCard(
 
 const BATCH_SIZE = 20;
 
+interface PostStub {
+  path: string;
+  metadata: PostMetadata;
+}
+
+function debounce(fn: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+async function enrichPost(
+  api: PluginViewAPI,
+  stub: PostStub
+): Promise<RedditTimelinePost> {
+  const files = await api.fetchFiles(stub.path);
+
+  const images = files.filter(
+    (f) =>
+      !f.isDirectory &&
+      isImageFile(f.name) &&
+      f.name !== "Video Thumbnail.jpg" &&
+      f.name !== "Thumbnail.jpg"
+  );
+
+  const videoFile = files.find(
+    (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+  );
+
+  return { path: stub.path, metadata: stub.metadata, images, videoFile };
+}
+
+function matchesRedditSearch(stub: PostStub, term: string): boolean {
+  const m = stub.metadata;
+  return (
+    m.title.toLowerCase().includes(term) ||
+    m.author.toLowerCase().includes(term) ||
+    (m.flair || "").toLowerCase().includes(term) ||
+    (m.selftext || "").toLowerCase().includes(term)
+  );
+}
+
 export async function renderRedditTimeline(
   container: HTMLElement,
   api: PluginViewAPI,
@@ -320,59 +364,47 @@ export async function renderRedditTimeline(
       ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
       : null;
 
-  // Load all post metadata in parallel
-  const postPromises = postDirs.map(async (dir) => {
-    const [metadata, files] = await Promise.all([
-      fetchPostMetadata(api, dir.path),
-      api.fetchFiles(dir.path),
-    ]);
-
-    if (!metadata) return null;
-
-    const images = files.filter(
-      (f) =>
-        !f.isDirectory &&
-        isImageFile(f.name) &&
-        f.name !== "Video Thumbnail.jpg" &&
-        f.name !== "Thumbnail.jpg"
-    );
-
-    const videoFile = files.find(
-      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-    );
-
-    return {
-      path: dir.path,
-      metadata,
-      images,
-      videoFile,
-    } as RedditTimelinePost;
-  });
-
-  const allPosts = (await Promise.all(postPromises)).filter(
-    (p): p is RedditTimelinePost => p !== null
-  );
+  // Load all metadata upfront (lightweight — just Post.nfo parsing)
+  const stubs = (
+    await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchPostMetadata(api, dir.path);
+        return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+      })
+    )
+  ).filter((s): s is PostStub => s !== null);
 
   // Sort state
   let sortMode: "new" | "top" = "new";
+  let searchTerm = "";
 
-  function applySort(): void {
+  function applySortAndFilter(): PostStub[] {
+    let list = searchTerm
+      ? stubs.filter((s) => matchesRedditSearch(s, searchTerm))
+      : stubs;
+
+    // Need a copy to avoid mutating the original when filtering
+    list = [...list];
+
     if (sortMode === "new") {
-      allPosts.sort(
+      list.sort(
         (a, b) =>
           new Date(b.metadata.created).getTime() -
           new Date(a.metadata.created).getTime()
       );
     } else {
-      allPosts.sort((a, b) => b.metadata.score - a.metadata.score);
+      list.sort((a, b) => b.metadata.score - a.metadata.score);
     }
+    return list;
   }
 
-  applySort();
+  let filtered = applySortAndFilter();
+  let renderedCount = 0;
+  let isLoading = false;
 
   container.innerHTML = "";
 
-  // -- Profile header with subreddit info + sort toggle --
+  // -- Profile header --
   const subredditName = subredditPath.split("/").pop() || "";
   const profileHeader = document.createElement("div");
   profileHeader.className = "rdt-profile-header";
@@ -386,75 +418,108 @@ export async function renderRedditTimeline(
     ${avatarHtml}
     <div class="rdt-profile-info">
       <h2 class="rdt-profile-name">r/${escapeHtml(subredditName)}</h2>
-      <span class="rdt-profile-count">${allPosts.length} archived posts</span>
-    </div>
-    <div class="rdt-profile-controls">
-      <select class="rdt-sort-select" aria-label="Sort posts">
-        <option value="new">Newest</option>
-        <option value="top">Top</option>
-      </select>
+      <span class="rdt-profile-count">${stubs.length} archived posts</span>
     </div>
   `;
   container.appendChild(profileHeader);
 
-  const sortSelect = profileHeader.querySelector<HTMLSelectElement>(
-    ".rdt-sort-select"
-  )!;
+  // -- Controls bar: search + sort --
+  const controls = document.createElement("div");
+  controls.className = "rdt-controls";
+  controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
+    <select class="rdt-sort-select" aria-label="Sort posts">
+      <option value="new">Newest</option>
+      <option value="top">Top</option>
+    </select>
+  `;
+  container.appendChild(controls);
+
+  const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
+  const sortSelect = controls.querySelector<HTMLSelectElement>(".rdt-sort-select")!;
 
   // -- Timeline container --
   const timeline = document.createElement("div");
   timeline.className = "rdt-timeline";
   container.appendChild(timeline);
 
-  let loadedCount = 0;
+  // -- Sentinel for infinite scroll --
+  const sentinel = document.createElement("div");
+  sentinel.style.height = "1px";
+  container.appendChild(sentinel);
 
-  function renderBatch(): void {
-    const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE);
-    for (const post of batch) {
-      const card = renderPostCard(post, api, subredditAvatarUrl);
-      if (onNavigate) {
-        card.style.cursor = "pointer";
-        card.addEventListener("click", (e) => {
-          const target = e.target as HTMLElement;
-          if (
-            target.closest(".rdt-media-wrap") ||
-            target.closest("a") ||
-            target.closest("video")
-          )
-            return;
-          onNavigate(post.path);
-        });
-      }
-      timeline.appendChild(card);
-    }
-    loadedCount += batch.length;
-
-    // Remove existing load more button
-    const existingBtn = container.querySelector(".rdt-load-more");
-    if (existingBtn) existingBtn.remove();
-
-    // Add load more button if there are more posts
-    if (loadedCount < allPosts.length) {
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.className = "rdt-load-more";
-      loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-      loadMoreBtn.addEventListener("click", () => {
-        renderBatch();
+  function appendPostCard(post: RedditTimelinePost): void {
+    const card = renderPostCard(post, api, subredditAvatarUrl);
+    if (onNavigate) {
+      card.style.cursor = "pointer";
+      card.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(".rdt-media-wrap") ||
+          target.closest("a") ||
+          target.closest("video")
+        )
+          return;
+        onNavigate(post.path);
       });
-      container.appendChild(loadMoreBtn);
     }
+    timeline.appendChild(card);
   }
 
-  // Sort toggle handler
+  async function renderNextBatch(): Promise<void> {
+    if (isLoading || renderedCount >= filtered.length) return;
+    isLoading = true;
+
+    const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
+    const enriched = await Promise.all(
+      batch.map((stub) => enrichPost(api, stub))
+    );
+
+    for (const post of enriched) appendPostCard(post);
+    renderedCount += enriched.length;
+
+    isLoading = false;
+  }
+
+  async function resetAndRender(): Promise<void> {
+    filtered = applySortAndFilter();
+    renderedCount = 0;
+    timeline.innerHTML = "";
+
+    if (filtered.length === 0 && searchTerm) {
+      timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml(searchTerm)}"</div>`;
+      return;
+    }
+
+    await renderNextBatch();
+  }
+
+  // IntersectionObserver for infinite scroll
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+        renderNextBatch();
+      }
+    },
+    { rootMargin: "600px" }
+  );
+  observer.observe(sentinel);
+
+  // Sort handler
   sortSelect.addEventListener("change", () => {
     sortMode = sortSelect.value as "new" | "top";
-    applySort();
-    loadedCount = 0;
-    timeline.innerHTML = "";
-    const existingBtn = container.querySelector(".rdt-load-more");
-    if (existingBtn) existingBtn.remove();
-    renderBatch();
+    resetAndRender();
   });
 
-  renderBatch();
+  // Search handler (debounced)
+  searchInput.addEventListener(
+    "input",
+    debounce(() => {
+      searchTerm = searchInput.value.trim().toLowerCase();
+      resetAndRender();
+    }, 300)
+  );
+
+  // Initial render
+  await renderNextBatch();
 }

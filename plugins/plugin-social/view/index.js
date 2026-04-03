@@ -966,27 +966,56 @@
   color: oklch(0.7 0.15 15);
 }
 
-/* \u2500\u2500 Bluesky Load More \u2500\u2500 */
-.bluesky-load-more {
-  display: block;
-  width: 100%;
+/* \u2500\u2500 Bluesky Controls \u2500\u2500 */
+.bluesky-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   max-width: 600px;
-  margin: 1rem auto;
-  padding: 0.75rem;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  color: var(--foreground);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  margin: 0 auto 1rem;
 }
 
-.bluesky-load-more:hover {
+.bluesky-controls .timeline-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.bluesky-controls .timeline-search:focus {
   border-color: var(--primary);
-  background: var(--card);
+}
+
+.bluesky-controls .timeline-search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.bluesky-controls .timeline-sort {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.bluesky-controls .timeline-sort:hover {
+  border-color: var(--primary);
 }
 
 /* \u2500\u2500 Bluesky Post Detail \u2500\u2500 */
@@ -1657,29 +1686,42 @@
 .rdt-score-down { color: oklch(0.7 0.15 25);  }
 .rdt-score-neutral { color: var(--muted-foreground); }
 
-/* Load more button */
-.rdt-load-more {
-  display: block;
-  width: 100%;
+/* Reddit controls bar */
+.rdt-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   max-width: 680px;
-  margin: 1.5rem auto;
-  padding: 0.75rem 1.5rem;
-  background: var(--muted);
-  color: var(--foreground);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  margin: 0 auto 1rem;
 }
 
-.rdt-load-more:hover {
+.rdt-controls .timeline-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.8125rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.rdt-controls .timeline-search:focus {
   border-color: var(--primary);
-  background: var(--card);
+}
+
+.rdt-controls .timeline-search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.timeline-no-results {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 2rem 1rem;
 }
 `;
 
@@ -2353,6 +2395,27 @@
     return card;
   }
   var BATCH_SIZE = 20;
+  function debounce(fn, ms) {
+    let timer;
+    return () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    };
+  }
+  async function enrichPost(api, stub) {
+    const files = await api.fetchFiles(stub.path);
+    const images = files.filter(
+      (f) => !f.isDirectory && isImageFile2(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+    );
+    const videoFile = files.find(
+      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+    );
+    return { path: stub.path, metadata: stub.metadata, images, videoFile };
+  }
+  function matchesRedditSearch(stub, term) {
+    const m = stub.metadata;
+    return m.title.toLowerCase().includes(term) || m.author.toLowerCase().includes(term) || (m.flair || "").toLowerCase().includes(term) || (m.selftext || "").toLowerCase().includes(term);
+  }
   async function renderRedditTimeline(container, api, subredditPath, onNavigate) {
     container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
     const entries = await api.fetchFiles(subredditPath);
@@ -2370,39 +2433,29 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const subredditAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const postPromises = postDirs.map(async (dir) => {
-      const [metadata, files] = await Promise.all([
-        fetchPostMetadata(api, dir.path),
-        api.fetchFiles(dir.path)
-      ]);
-      if (!metadata) return null;
-      const images = files.filter(
-        (f) => !f.isDirectory && isImageFile2(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
-      );
-      const videoFile = files.find(
-        (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-      );
-      return {
-        path: dir.path,
-        metadata,
-        images,
-        videoFile
-      };
-    });
-    const allPosts = (await Promise.all(postPromises)).filter(
-      (p) => p !== null
-    );
+    const stubs = (await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchPostMetadata(api, dir.path);
+        return metadata ? { path: dir.path, metadata } : null;
+      })
+    )).filter((s) => s !== null);
     let sortMode = "new";
-    function applySort() {
+    let searchTerm = "";
+    function applySortAndFilter() {
+      let list = searchTerm ? stubs.filter((s) => matchesRedditSearch(s, searchTerm)) : stubs;
+      list = [...list];
       if (sortMode === "new") {
-        allPosts.sort(
+        list.sort(
           (a, b) => new Date(b.metadata.created).getTime() - new Date(a.metadata.created).getTime()
         );
       } else {
-        allPosts.sort((a, b) => b.metadata.score - a.metadata.score);
+        list.sort((a, b) => b.metadata.score - a.metadata.score);
       }
+      return list;
     }
-    applySort();
+    let filtered = applySortAndFilter();
+    let renderedCount = 0;
+    let isLoading = false;
     container.innerHTML = "";
     const subredditName = subredditPath.split("/").pop() || "";
     const profileHeader = document.createElement("div");
@@ -2415,61 +2468,83 @@
     ${avatarHtml}
     <div class="rdt-profile-info">
       <h2 class="rdt-profile-name">r/${escapeHtml2(subredditName)}</h2>
-      <span class="rdt-profile-count">${allPosts.length} archived posts</span>
-    </div>
-    <div class="rdt-profile-controls">
-      <select class="rdt-sort-select" aria-label="Sort posts">
-        <option value="new">Newest</option>
-        <option value="top">Top</option>
-      </select>
+      <span class="rdt-profile-count">${stubs.length} archived posts</span>
     </div>
   `;
     container.appendChild(profileHeader);
-    const sortSelect = profileHeader.querySelector(
-      ".rdt-sort-select"
-    );
+    const controls = document.createElement("div");
+    controls.className = "rdt-controls";
+    controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
+    <select class="rdt-sort-select" aria-label="Sort posts">
+      <option value="new">Newest</option>
+      <option value="top">Top</option>
+    </select>
+  `;
+    container.appendChild(controls);
+    const searchInput = controls.querySelector(".timeline-search");
+    const sortSelect = controls.querySelector(".rdt-sort-select");
     const timeline = document.createElement("div");
     timeline.className = "rdt-timeline";
     container.appendChild(timeline);
-    let loadedCount = 0;
-    function renderBatch() {
-      const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE);
-      for (const post of batch) {
-        const card = renderPostCard(post, api, subredditAvatarUrl);
-        if (onNavigate) {
-          card.style.cursor = "pointer";
-          card.addEventListener("click", (e) => {
-            const target = e.target;
-            if (target.closest(".rdt-media-wrap") || target.closest("a") || target.closest("video"))
-              return;
-            onNavigate(post.path);
-          });
-        }
-        timeline.appendChild(card);
-      }
-      loadedCount += batch.length;
-      const existingBtn = container.querySelector(".rdt-load-more");
-      if (existingBtn) existingBtn.remove();
-      if (loadedCount < allPosts.length) {
-        const loadMoreBtn = document.createElement("button");
-        loadMoreBtn.className = "rdt-load-more";
-        loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-        loadMoreBtn.addEventListener("click", () => {
-          renderBatch();
+    const sentinel = document.createElement("div");
+    sentinel.style.height = "1px";
+    container.appendChild(sentinel);
+    function appendPostCard(post) {
+      const card = renderPostCard(post, api, subredditAvatarUrl);
+      if (onNavigate) {
+        card.style.cursor = "pointer";
+        card.addEventListener("click", (e) => {
+          const target = e.target;
+          if (target.closest(".rdt-media-wrap") || target.closest("a") || target.closest("video"))
+            return;
+          onNavigate(post.path);
         });
-        container.appendChild(loadMoreBtn);
       }
+      timeline.appendChild(card);
     }
+    async function renderNextBatch() {
+      if (isLoading || renderedCount >= filtered.length) return;
+      isLoading = true;
+      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
+      const enriched = await Promise.all(
+        batch.map((stub) => enrichPost(api, stub))
+      );
+      for (const post of enriched) appendPostCard(post);
+      renderedCount += enriched.length;
+      isLoading = false;
+    }
+    async function resetAndRender() {
+      filtered = applySortAndFilter();
+      renderedCount = 0;
+      timeline.innerHTML = "";
+      if (filtered.length === 0 && searchTerm) {
+        timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml2(searchTerm)}"</div>`;
+        return;
+      }
+      await renderNextBatch();
+    }
+    const observer = new IntersectionObserver(
+      (entries2) => {
+        if (entries2[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+          renderNextBatch();
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(sentinel);
     sortSelect.addEventListener("change", () => {
       sortMode = sortSelect.value;
-      applySort();
-      loadedCount = 0;
-      timeline.innerHTML = "";
-      const existingBtn = container.querySelector(".rdt-load-more");
-      if (existingBtn) existingBtn.remove();
-      renderBatch();
+      resetAndRender();
     });
-    renderBatch();
+    searchInput.addEventListener(
+      "input",
+      debounce(() => {
+        searchTerm = searchInput.value.trim().toLowerCase();
+        resetAndRender();
+      }, 300)
+    );
+    await renderNextBatch();
   }
 
   // view/src/markdown.ts
@@ -3104,6 +3179,30 @@
     return card;
   }
   var BATCH_SIZE2 = 20;
+  function debounce2(fn, ms) {
+    let timer;
+    return () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    };
+  }
+  async function enrichBlueskyPost(api, stub) {
+    const files = await api.fetchFiles(stub.path);
+    const images = files.filter(
+      (f) => !f.isDirectory && isImageFile4(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+    );
+    const videoFile = files.find(
+      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+    );
+    const thumbnailFile = files.find(
+      (f) => !f.isDirectory && f.name === "Thumbnail.jpg"
+    );
+    return { path: stub.path, metadata: stub.metadata, images, videoFile, thumbnailFile };
+  }
+  function matchesBlueskySearch(stub, term) {
+    const m = stub.metadata;
+    return m.text.toLowerCase().includes(term) || m.authorHandle.toLowerCase().includes(term) || (m.displayName || "").toLowerCase().includes(term);
+  }
   async function renderBlueskyTimeline(container, api, profilePath, onNavigate) {
     container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
     const entries = await api.fetchFiles(profilePath);
@@ -3121,40 +3220,28 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const profileAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const postPromises = postDirs.map(async (dir) => {
-      const [metadata, files] = await Promise.all([
-        fetchBlueskyPostMetadata(api, dir.path),
-        api.fetchFiles(dir.path)
-      ]);
-      if (!metadata) return null;
-      const images = files.filter(
-        (f) => !f.isDirectory && isImageFile4(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+    const stubs = (await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchBlueskyPostMetadata(api, dir.path);
+        return metadata ? { path: dir.path, metadata } : null;
+      })
+    )).filter((s) => s !== null);
+    let sortMode = "new";
+    let searchTerm = "";
+    function applySortAndFilter() {
+      let list = searchTerm ? stubs.filter((s) => matchesBlueskySearch(s, searchTerm)) : [...stubs];
+      const dir = sortMode === "new" ? -1 : 1;
+      list.sort(
+        (a, b) => dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
       );
-      const videoFile = files.find(
-        (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-      );
-      const thumbnailFile = files.find(
-        (f) => !f.isDirectory && f.name === "Thumbnail.jpg"
-      );
-      return {
-        path: dir.path,
-        metadata,
-        images,
-        videoFile,
-        thumbnailFile
-      };
-    });
-    const allPosts = (await Promise.all(postPromises)).filter(
-      (p) => p !== null
-    );
-    allPosts.sort((a, b) => {
-      const dateA = new Date(a.metadata.created).getTime();
-      const dateB = new Date(b.metadata.created).getTime();
-      return dateB - dateA;
-    });
+      return list;
+    }
+    let filtered = applySortAndFilter();
+    let renderedCount = 0;
+    let isLoading = false;
     container.innerHTML = "";
-    if (allPosts.length > 0) {
-      const first = allPosts[0].metadata;
+    if (stubs.length > 0) {
+      const first = stubs[0].metadata;
       const profileHeader = document.createElement("div");
       profileHeader.className = "bluesky-profile-header";
       let avatarHtml = "";
@@ -3166,43 +3253,83 @@
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml7(first.displayName || first.authorHandle)}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml7(first.authorHandle)}</span>
-        <span class="bluesky-profile-count">${allPosts.length} archived posts</span>
+        <span class="bluesky-profile-count">${stubs.length} archived posts</span>
       </div>
     `;
       container.appendChild(profileHeader);
     }
+    const controls = document.createElement("div");
+    controls.className = "bluesky-controls";
+    controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
+    <select class="timeline-sort" aria-label="Sort posts">
+      <option value="new">Newest</option>
+      <option value="old">Oldest</option>
+    </select>
+  `;
+    container.appendChild(controls);
+    const searchInput = controls.querySelector(".timeline-search");
+    const sortSelect = controls.querySelector(".timeline-sort");
     const timeline = document.createElement("div");
     timeline.className = "bluesky-timeline";
     container.appendChild(timeline);
-    let loadedCount = 0;
-    function renderBatch() {
-      const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE2);
-      for (const post of batch) {
-        const card = renderPostCard2(post, api, profileAvatarUrl);
-        if (onNavigate) {
-          card.style.cursor = "pointer";
-          card.addEventListener("click", (e) => {
-            const target = e.target;
-            if (target.closest("a") || target.closest(".bluesky-post-image")) return;
-            onNavigate(post.path);
-          });
-        }
-        timeline.appendChild(card);
-      }
-      loadedCount += batch.length;
-      const existingBtn = container.querySelector(".bluesky-load-more");
-      if (existingBtn) existingBtn.remove();
-      if (loadedCount < allPosts.length) {
-        const loadMoreBtn = document.createElement("button");
-        loadMoreBtn.className = "bluesky-load-more";
-        loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-        loadMoreBtn.addEventListener("click", () => {
-          renderBatch();
+    const sentinel = document.createElement("div");
+    sentinel.style.height = "1px";
+    container.appendChild(sentinel);
+    function appendPostCard(post) {
+      const card = renderPostCard2(post, api, profileAvatarUrl);
+      if (onNavigate) {
+        card.style.cursor = "pointer";
+        card.addEventListener("click", (e) => {
+          const target = e.target;
+          if (target.closest("a") || target.closest(".bluesky-post-image")) return;
+          onNavigate(post.path);
         });
-        container.appendChild(loadMoreBtn);
       }
+      timeline.appendChild(card);
     }
-    renderBatch();
+    async function renderNextBatch() {
+      if (isLoading || renderedCount >= filtered.length) return;
+      isLoading = true;
+      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE2);
+      const enriched = await Promise.all(
+        batch.map((stub) => enrichBlueskyPost(api, stub))
+      );
+      for (const post of enriched) appendPostCard(post);
+      renderedCount += enriched.length;
+      isLoading = false;
+    }
+    async function resetAndRender() {
+      filtered = applySortAndFilter();
+      renderedCount = 0;
+      timeline.innerHTML = "";
+      if (filtered.length === 0 && searchTerm) {
+        timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml7(searchTerm)}"</div>`;
+        return;
+      }
+      await renderNextBatch();
+    }
+    const observer = new IntersectionObserver(
+      (entries2) => {
+        if (entries2[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+          renderNextBatch();
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(sentinel);
+    sortSelect.addEventListener("change", () => {
+      sortMode = sortSelect.value;
+      resetAndRender();
+    });
+    searchInput.addEventListener(
+      "input",
+      debounce2(() => {
+        searchTerm = searchInput.value.trim().toLowerCase();
+        resetAndRender();
+      }, 300)
+    );
+    await renderNextBatch();
   }
 
   // view/src/bluesky-post-detail.ts
@@ -3745,6 +3872,27 @@
     return card;
   }
   var BATCH_SIZE3 = 20;
+  function debounce3(fn, ms) {
+    let timer;
+    return () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    };
+  }
+  async function enrichTwitterPost(api, stub) {
+    const files = await api.fetchFiles(stub.path);
+    const images = files.filter(
+      (f) => !f.isDirectory && isImageFile6(f.name) && f.name !== "Video Thumbnail.jpg"
+    );
+    const videoFile = files.find(
+      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+    );
+    return { path: stub.path, metadata: stub.metadata, images, videoFile };
+  }
+  function matchesTwitterSearch(stub, term) {
+    const m = stub.metadata;
+    return m.text.toLowerCase().includes(term) || m.screenName.toLowerCase().includes(term) || m.name.toLowerCase().includes(term) || (m.hashtags || []).some((h) => h.toLowerCase().includes(term));
+  }
   async function renderTwitterTimeline(container, api, profilePath, onNavigate) {
     container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
     const entries = await api.fetchFiles(profilePath);
@@ -3762,36 +3910,31 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const profileAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const postPromises = postDirs.map(async (dir) => {
-      const [metadata, files] = await Promise.all([
-        fetchTwitterPostMetadata(api, dir.path),
-        api.fetchFiles(dir.path)
-      ]);
-      if (!metadata) return null;
-      const images = files.filter(
-        (f) => !f.isDirectory && isImageFile6(f.name) && f.name !== "Video Thumbnail.jpg"
-      );
-      const videoFile = files.find(
-        (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-      );
-      return {
-        path: dir.path,
-        metadata,
-        images,
-        videoFile
-      };
-    });
-    const allPosts = (await Promise.all(postPromises)).filter(
-      (p) => p !== null
-    );
-    allPosts.sort((a, b) => {
-      const dateA = new Date(a.metadata.created).getTime();
-      const dateB = new Date(b.metadata.created).getTime();
-      return dateB - dateA;
-    });
+    const stubs = (await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchTwitterPostMetadata(api, dir.path);
+        return metadata ? { path: dir.path, metadata } : null;
+      })
+    )).filter((s) => s !== null);
+    let sortMode = "new";
+    let searchTerm = "";
+    function applySortAndFilter() {
+      let list = searchTerm ? stubs.filter((s) => matchesTwitterSearch(s, searchTerm)) : [...stubs];
+      if (sortMode === "new") {
+        list.sort(
+          (a, b) => new Date(b.metadata.created).getTime() - new Date(a.metadata.created).getTime()
+        );
+      } else {
+        list.sort((a, b) => b.metadata.favoriteCount - a.metadata.favoriteCount);
+      }
+      return list;
+    }
+    let filtered = applySortAndFilter();
+    let renderedCount = 0;
+    let isLoading = false;
     container.innerHTML = "";
-    if (allPosts.length > 0) {
-      const first = allPosts[0].metadata;
+    if (stubs.length > 0) {
+      const first = stubs[0].metadata;
       const profileHeader = document.createElement("div");
       profileHeader.className = "bluesky-profile-header";
       let avatarHtml = "";
@@ -3804,43 +3947,83 @@
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml9(first.name)} ${verifiedHtml}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml9(first.screenName)}</span>
-        <span class="bluesky-profile-count">${allPosts.length} archived tweets</span>
+        <span class="bluesky-profile-count">${stubs.length} archived tweets</span>
       </div>
     `;
       container.appendChild(profileHeader);
     }
+    const controls = document.createElement("div");
+    controls.className = "bluesky-controls";
+    controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search tweets..." aria-label="Search tweets" />
+    <select class="timeline-sort" aria-label="Sort tweets">
+      <option value="new">Newest</option>
+      <option value="liked">Most Liked</option>
+    </select>
+  `;
+    container.appendChild(controls);
+    const searchInput = controls.querySelector(".timeline-search");
+    const sortSelect = controls.querySelector(".timeline-sort");
     const timeline = document.createElement("div");
     timeline.className = "bluesky-timeline";
     container.appendChild(timeline);
-    let loadedCount = 0;
-    function renderBatch() {
-      const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE3);
-      for (const post of batch) {
-        const card = renderPostCard3(post, api, profileAvatarUrl);
-        if (onNavigate) {
-          card.style.cursor = "pointer";
-          card.addEventListener("click", (e) => {
-            const target = e.target;
-            if (target.closest("a") || target.closest(".bluesky-post-image")) return;
-            onNavigate(post.path);
-          });
-        }
-        timeline.appendChild(card);
-      }
-      loadedCount += batch.length;
-      const existingBtn = container.querySelector(".bluesky-load-more");
-      if (existingBtn) existingBtn.remove();
-      if (loadedCount < allPosts.length) {
-        const loadMoreBtn = document.createElement("button");
-        loadMoreBtn.className = "bluesky-load-more";
-        loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-        loadMoreBtn.addEventListener("click", () => {
-          renderBatch();
+    const sentinel = document.createElement("div");
+    sentinel.style.height = "1px";
+    container.appendChild(sentinel);
+    function appendPostCard(post) {
+      const card = renderPostCard3(post, api, profileAvatarUrl);
+      if (onNavigate) {
+        card.style.cursor = "pointer";
+        card.addEventListener("click", (e) => {
+          const target = e.target;
+          if (target.closest("a") || target.closest(".bluesky-post-image")) return;
+          onNavigate(post.path);
         });
-        container.appendChild(loadMoreBtn);
       }
+      timeline.appendChild(card);
     }
-    renderBatch();
+    async function renderNextBatch() {
+      if (isLoading || renderedCount >= filtered.length) return;
+      isLoading = true;
+      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE3);
+      const enriched = await Promise.all(
+        batch.map((stub) => enrichTwitterPost(api, stub))
+      );
+      for (const post of enriched) appendPostCard(post);
+      renderedCount += enriched.length;
+      isLoading = false;
+    }
+    async function resetAndRender() {
+      filtered = applySortAndFilter();
+      renderedCount = 0;
+      timeline.innerHTML = "";
+      if (filtered.length === 0 && searchTerm) {
+        timeline.innerHTML = `<div class="timeline-no-results">No tweets match "${escapeHtml9(searchTerm)}"</div>`;
+        return;
+      }
+      await renderNextBatch();
+    }
+    const observer = new IntersectionObserver(
+      (entries2) => {
+        if (entries2[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+          renderNextBatch();
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(sentinel);
+    sortSelect.addEventListener("change", () => {
+      sortMode = sortSelect.value;
+      resetAndRender();
+    });
+    searchInput.addEventListener(
+      "input",
+      debounce3(() => {
+        searchTerm = searchInput.value.trim().toLowerCase();
+        resetAndRender();
+      }, 300)
+    );
+    await renderNextBatch();
   }
 
   // view/src/twitter-post-detail.ts

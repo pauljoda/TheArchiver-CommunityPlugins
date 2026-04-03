@@ -226,6 +226,49 @@ function renderPostCard(
 
 const BATCH_SIZE = 20;
 
+interface PostStub {
+  path: string;
+  metadata: TwitterPostMetadata;
+}
+
+function debounce(fn: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+async function enrichTwitterPost(
+  api: PluginViewAPI,
+  stub: PostStub
+): Promise<TimelinePost> {
+  const files = await api.fetchFiles(stub.path);
+
+  const images = files.filter(
+    (f) =>
+      !f.isDirectory &&
+      isImageFile(f.name) &&
+      f.name !== "Video Thumbnail.jpg"
+  );
+
+  const videoFile = files.find(
+    (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+  );
+
+  return { path: stub.path, metadata: stub.metadata, images, videoFile };
+}
+
+function matchesTwitterSearch(stub: PostStub, term: string): boolean {
+  const m = stub.metadata;
+  return (
+    m.text.toLowerCase().includes(term) ||
+    m.screenName.toLowerCase().includes(term) ||
+    m.name.toLowerCase().includes(term) ||
+    (m.hashtags || []).some((h) => h.toLowerCase().includes(term))
+  );
+}
+
 export async function renderTwitterTimeline(
   container: HTMLElement,
   api: PluginViewAPI,
@@ -255,50 +298,46 @@ export async function renderTwitterTimeline(
     ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
     : null;
 
-  // Load all post metadata in parallel
-  const postPromises = postDirs.map(async (dir) => {
-    const [metadata, files] = await Promise.all([
-      fetchTwitterPostMetadata(api, dir.path),
-      api.fetchFiles(dir.path),
-    ]);
+  // Load all metadata upfront (lightweight — just Post.nfo parsing)
+  const stubs = (
+    await Promise.all(
+      postDirs.map(async (dir) => {
+        const metadata = await fetchTwitterPostMetadata(api, dir.path);
+        return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+      })
+    )
+  ).filter((s): s is PostStub => s !== null);
 
-    if (!metadata) return null;
+  // Sort/search state
+  let sortMode: "new" | "liked" = "new";
+  let searchTerm = "";
 
-    const images = files.filter(
-      (f) =>
-        !f.isDirectory &&
-        isImageFile(f.name) &&
-        f.name !== "Video Thumbnail.jpg"
-    );
+  function applySortAndFilter(): PostStub[] {
+    let list = searchTerm
+      ? stubs.filter((s) => matchesTwitterSearch(s, searchTerm))
+      : [...stubs];
 
-    const videoFile = files.find(
-      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
-    );
+    if (sortMode === "new") {
+      list.sort(
+        (a, b) =>
+          new Date(b.metadata.created).getTime() -
+          new Date(a.metadata.created).getTime()
+      );
+    } else {
+      list.sort((a, b) => b.metadata.favoriteCount - a.metadata.favoriteCount);
+    }
+    return list;
+  }
 
-    return {
-      path: dir.path,
-      metadata,
-      images,
-      videoFile,
-    } as TimelinePost;
-  });
-
-  const allPosts = (await Promise.all(postPromises)).filter(
-    (p): p is TimelinePost => p !== null
-  );
-
-  // Sort by creation date, newest first
-  allPosts.sort((a, b) => {
-    const dateA = new Date(a.metadata.created).getTime();
-    const dateB = new Date(b.metadata.created).getTime();
-    return dateB - dateA;
-  });
+  let filtered = applySortAndFilter();
+  let renderedCount = 0;
+  let isLoading = false;
 
   container.innerHTML = "";
 
   // Profile header
-  if (allPosts.length > 0) {
-    const first = allPosts[0].metadata;
+  if (stubs.length > 0) {
+    const first = stubs[0].metadata;
     const profileHeader = document.createElement("div");
     profileHeader.className = "bluesky-profile-header";
 
@@ -314,47 +353,103 @@ export async function renderTwitterTimeline(
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml(first.name)} ${verifiedHtml}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml(first.screenName)}</span>
-        <span class="bluesky-profile-count">${allPosts.length} archived tweets</span>
+        <span class="bluesky-profile-count">${stubs.length} archived tweets</span>
       </div>
     `;
     container.appendChild(profileHeader);
   }
 
+  // Controls bar: search + sort
+  const controls = document.createElement("div");
+  controls.className = "bluesky-controls";
+  controls.innerHTML = `
+    <input type="text" class="timeline-search" placeholder="Search tweets..." aria-label="Search tweets" />
+    <select class="timeline-sort" aria-label="Sort tweets">
+      <option value="new">Newest</option>
+      <option value="liked">Most Liked</option>
+    </select>
+  `;
+  container.appendChild(controls);
+
+  const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
+  const sortSelect = controls.querySelector<HTMLSelectElement>(".timeline-sort")!;
+
   const timeline = document.createElement("div");
   timeline.className = "bluesky-timeline";
   container.appendChild(timeline);
 
-  let loadedCount = 0;
+  // Sentinel for infinite scroll
+  const sentinel = document.createElement("div");
+  sentinel.style.height = "1px";
+  container.appendChild(sentinel);
 
-  function renderBatch(): void {
-    const batch = allPosts.slice(loadedCount, loadedCount + BATCH_SIZE);
-    for (const post of batch) {
-      const card = renderPostCard(post, api, profileAvatarUrl);
-      if (onNavigate) {
-        card.style.cursor = "pointer";
-        card.addEventListener("click", (e) => {
-          const target = e.target as HTMLElement;
-          if (target.closest("a") || target.closest(".bluesky-post-image")) return;
-          onNavigate(post.path);
-        });
-      }
-      timeline.appendChild(card);
-    }
-    loadedCount += batch.length;
-
-    const existingBtn = container.querySelector(".bluesky-load-more");
-    if (existingBtn) existingBtn.remove();
-
-    if (loadedCount < allPosts.length) {
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.className = "bluesky-load-more";
-      loadMoreBtn.textContent = `Load more (${allPosts.length - loadedCount} remaining)`;
-      loadMoreBtn.addEventListener("click", () => {
-        renderBatch();
+  function appendPostCard(post: TimelinePost): void {
+    const card = renderPostCard(post, api, profileAvatarUrl);
+    if (onNavigate) {
+      card.style.cursor = "pointer";
+      card.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("a") || target.closest(".bluesky-post-image")) return;
+        onNavigate(post.path);
       });
-      container.appendChild(loadMoreBtn);
     }
+    timeline.appendChild(card);
   }
 
-  renderBatch();
+  async function renderNextBatch(): Promise<void> {
+    if (isLoading || renderedCount >= filtered.length) return;
+    isLoading = true;
+
+    const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
+    const enriched = await Promise.all(
+      batch.map((stub) => enrichTwitterPost(api, stub))
+    );
+
+    for (const post of enriched) appendPostCard(post);
+    renderedCount += enriched.length;
+
+    isLoading = false;
+  }
+
+  async function resetAndRender(): Promise<void> {
+    filtered = applySortAndFilter();
+    renderedCount = 0;
+    timeline.innerHTML = "";
+
+    if (filtered.length === 0 && searchTerm) {
+      timeline.innerHTML = `<div class="timeline-no-results">No tweets match "${escapeHtml(searchTerm)}"</div>`;
+      return;
+    }
+
+    await renderNextBatch();
+  }
+
+  // IntersectionObserver for infinite scroll
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
+        renderNextBatch();
+      }
+    },
+    { rootMargin: "600px" }
+  );
+  observer.observe(sentinel);
+
+  // Sort handler
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value as "new" | "liked";
+    resetAndRender();
+  });
+
+  // Search handler (debounced)
+  searchInput.addEventListener(
+    "input",
+    debounce(() => {
+      searchTerm = searchInput.value.trim().toLowerCase();
+      resetAndRender();
+    }, 300)
+  );
+
+  // Initial render
+  await renderNextBatch();
 }
