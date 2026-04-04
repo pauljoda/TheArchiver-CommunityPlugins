@@ -32,7 +32,7 @@
     {
       "id": "yt-dlp",
       "name": "yt-dlp",
-      "version": "1.0.1",
+      "version": "2.0.0",
       "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",
       "author": "TheArchiver",
       "downloadFile": "plugin-youtube.zip",

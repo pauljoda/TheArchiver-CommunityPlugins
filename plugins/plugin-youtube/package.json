@@ -1,14 +1,17 @@
 {
   "name": "plugin-youtube",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
-    "build": "tsc && node dist/manifest-gen.js",
-    "deploy": "tsc && node dist/manifest-gen.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-youtube && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-youtube/ && cp -r yt-dlp-plugins $HOME/Dev/TheArchiver/plugins/plugin-youtube/",
-    "package": "tsc && node dist/manifest-gen.js && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
+    "build": "tsc && node dist/manifest-gen.js && node view/build.js",
+    "build:view": "node view/build.js",
+    "deploy": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-youtube/view && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-youtube/ && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-youtube/view/ && cp -r yt-dlp-plugins $HOME/Dev/TheArchiver/plugins/plugin-youtube/",
+    "package": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p dist/package/view && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.27.4",
+    "hls.js": "^1.6.0",
     "typescript": "^5.9.0"
   }
 }

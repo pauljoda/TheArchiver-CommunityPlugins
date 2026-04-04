@@ -486,8 +486,8 @@ const plugin = definePlugin({
     // Write info json for metadata reference
     args.push("--write-info-json");
 
-    // Restrict filenames to ASCII to avoid filesystem issues
-    args.push("--restrict-filenames");
+    // Replace filesystem-illegal characters (Windows compat) while keeping Unicode titles
+    args.push("--windows-filenames");
 
     // Prevent "NA" from appearing as folder/file names when metadata is missing
     args.push("--output-na-placeholder", shellEscape(""));
@@ -495,7 +495,9 @@ const plugin = definePlugin({
     // Cap filename length to avoid OS 255-byte limit on long video titles
     args.push("--trim-filenames", "180");
 
-    // Extra user-specified arguments
+    // Extra user-specified arguments — intentionally not shell-escaped so users can pass
+    // complex flags like `--postprocessor-args "ffmpeg:-vf scale=1280:-2"`.
+    // This is a user-controlled setting, not external input.
     if (extraArgs.trim()) {
       args.push(extraArgs.trim());
     }
