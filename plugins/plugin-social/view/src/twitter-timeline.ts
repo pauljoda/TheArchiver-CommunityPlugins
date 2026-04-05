@@ -1,5 +1,6 @@
 import type { PluginViewAPI, FileEntry, TwitterPostMetadata } from "./types";
 import { fetchTwitterPostMetadata } from "./nfo-parser";
+import { LazyFeedCard } from "./lazy-feed-card";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -274,7 +275,7 @@ export async function renderTwitterTimeline(
   api: PluginViewAPI,
   profilePath: string,
   onNavigate?: (path: string) => void
-): Promise<void> {
+): Promise<() => void> {
   container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
 
   const entries = await api.fetchFiles(profilePath);
@@ -332,6 +333,8 @@ export async function renderTwitterTimeline(
   let filtered = applySortAndFilter();
   let renderedCount = 0;
   let isLoading = false;
+  let scrollObserver: IntersectionObserver | null = null;
+  const lazyCards: LazyFeedCard[] = [];
 
   container.innerHTML = "";
 
@@ -378,42 +381,65 @@ export async function renderTwitterTimeline(
   timeline.className = "bluesky-timeline";
   container.appendChild(timeline);
 
-  // Sentinel for infinite scroll
   const sentinel = document.createElement("div");
-  sentinel.style.height = "1px";
+  sentinel.className = "timeline-load-sentinel";
   container.appendChild(sentinel);
 
-  function appendPostCard(post: TimelinePost): void {
-    const card = renderPostCard(post, api, profileAvatarUrl);
-    if (onNavigate) {
-      card.style.cursor = "pointer";
-      card.addEventListener("click", (e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest("a") || target.closest(".bluesky-post-image")) return;
-        onNavigate(post.path);
-      });
+  function clearRenderedCards(): void {
+    while (lazyCards.length > 0) {
+      lazyCards.pop()?.destroy();
     }
-    timeline.appendChild(card);
+  }
+
+  function appendPostCard(post: TimelinePost, index: number): void {
+    const lazyCard = new LazyFeedCard({
+      estimatedHeight: 320,
+      initiallyRendered: index < 8,
+      renderMargin: "500px",
+      render: () => {
+        const card = renderPostCard(post, api, profileAvatarUrl);
+        if (onNavigate) {
+          card.style.cursor = "pointer";
+          card.addEventListener("click", (e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("a") || target.closest(".bluesky-post-image")) {
+              return;
+            }
+            onNavigate(post.path);
+          });
+        }
+        return card;
+      },
+    });
+    lazyCard.mount(timeline);
+    lazyCards.push(lazyCard);
   }
 
   async function renderNextBatch(): Promise<void> {
-    if (isLoading || renderedCount >= filtered.length) return;
-    isLoading = true;
+    if (isLoading || renderedCount >= filtered.length) {
+      return;
+    }
 
+    isLoading = true;
     const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
     const enriched = await Promise.all(
       batch.map((stub) => enrichTwitterPost(api, stub))
     );
+    const startIndex = renderedCount;
 
-    for (const post of enriched) appendPostCard(post);
+    for (let index = 0; index < enriched.length; index += 1) {
+      appendPostCard(enriched[index], startIndex + index);
+    }
+
     renderedCount += enriched.length;
-
     isLoading = false;
   }
 
   async function resetAndRender(): Promise<void> {
     filtered = applySortAndFilter();
     renderedCount = 0;
+    isLoading = false;
+    clearRenderedCards();
     timeline.innerHTML = "";
 
     if (filtered.length === 0 && searchTerm) {
@@ -424,32 +450,40 @@ export async function renderTwitterTimeline(
     await renderNextBatch();
   }
 
-  // IntersectionObserver for infinite scroll
-  const observer = new IntersectionObserver(
+  scrollObserver = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && !isLoading && renderedCount < filtered.length) {
-        renderNextBatch();
+      if (entries[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
+        void renderNextBatch();
       }
     },
     { rootMargin: "600px" }
   );
-  observer.observe(sentinel);
+  scrollObserver.observe(sentinel);
 
   // Sort handler
-  sortSelect.addEventListener("change", () => {
+  const handleSortChange = () => {
     sortMode = sortSelect.value as "new" | "liked";
     resetAndRender();
-  });
+  };
+  sortSelect.addEventListener("change", handleSortChange);
 
   // Search handler (debounced)
+  const handleSearchInput = debounce(() => {
+    searchTerm = searchInput.value.trim().toLowerCase();
+    resetAndRender();
+  }, 300);
   searchInput.addEventListener(
     "input",
-    debounce(() => {
-      searchTerm = searchInput.value.trim().toLowerCase();
-      resetAndRender();
-    }, 300)
+    handleSearchInput
   );
 
   // Initial render
-  await renderNextBatch();
+  await resetAndRender();
+
+  return () => {
+    scrollObserver?.disconnect();
+    clearRenderedCards();
+    sortSelect.removeEventListener("change", handleSortChange);
+    searchInput.removeEventListener("input", handleSearchInput);
+  };
 }

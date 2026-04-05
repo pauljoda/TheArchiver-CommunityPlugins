@@ -32,6 +32,8 @@ interface ViewInfo {
   platform: Platform;
 }
 
+type ViewCleanup = () => void;
+
 async function detectViewInfo(
   api: PluginViewAPI,
   dirPath: string,
@@ -143,6 +145,7 @@ export class RedditApp {
   private container: HTMLElement;
   private api: PluginViewAPI;
   private contentEl: HTMLElement;
+  private viewCleanup?: ViewCleanup;
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
@@ -159,6 +162,9 @@ export class RedditApp {
   }
 
   async renderCurrentPath(): Promise<void> {
+    this.viewCleanup?.();
+    this.viewCleanup = undefined;
+
     const { currentPath, trackedDirectory } = this.api;
 
     this.contentEl.innerHTML = "";
@@ -197,21 +203,21 @@ export class RedditApp {
 
       case "post-list":
         if (viewInfo.platform === "bluesky") {
-          await renderBlueskyTimeline(
+          this.viewCleanup = await renderBlueskyTimeline(
             viewContainer,
             this.api,
             currentPath,
             (path) => this.api.navigate(path)
           );
         } else if (viewInfo.platform === "twitter") {
-          await renderTwitterTimeline(
+          this.viewCleanup = await renderTwitterTimeline(
             viewContainer,
             this.api,
             currentPath,
             (path) => this.api.navigate(path)
           );
         } else {
-          await renderRedditTimeline(
+          this.viewCleanup = await renderRedditTimeline(
             viewContainer,
             this.api,
             currentPath,
@@ -238,6 +244,8 @@ export class RedditApp {
   }
 
   destroy(): void {
+    this.viewCleanup?.();
+    this.viewCleanup = undefined;
     this.container.classList.remove("reddit-view");
     this.container.innerHTML = "";
   }

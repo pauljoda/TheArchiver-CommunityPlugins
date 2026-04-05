@@ -683,12 +683,52 @@ const CSS = `
   margin: 0 auto;
 }
 
+.virtualized-feed-placeholder {
+  width: 100%;
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--muted) 92%, transparent) 0%,
+      color-mix(in srgb, var(--muted) 100%, white 6%) 50%,
+      color-mix(in srgb, var(--muted) 92%, transparent) 100%
+    );
+  background-size: 200% 100%;
+  animation: virtualized-feed-pulse 1.6s linear infinite;
+}
+
+.lazy-feed-card {
+  width: 100%;
+  overflow-anchor: none;
+}
+
+.lazy-feed-card-placeholder {
+  width: 100%;
+  overflow-anchor: none;
+}
+
+.timeline-load-sentinel {
+  height: 1px;
+  overflow-anchor: none;
+}
+
+@keyframes virtualized-feed-pulse {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .bluesky-post-card {
   padding: 1rem 0;
   border-bottom: 1px solid var(--border);
 }
 
-.bluesky-post-card:last-child {
+.bluesky-timeline > .bluesky-post-card:last-child,
+.bluesky-timeline > .virtualized-feed-item:last-child .bluesky-post-card {
   border-bottom: none;
 }
 
@@ -1430,7 +1470,8 @@ const CSS = `
   gap: 0.5rem;
 }
 
-.rdt-post-card:last-child {
+.rdt-timeline > .rdt-post-card:last-child,
+.rdt-timeline > .virtualized-feed-item:last-child .rdt-post-card {
   border-bottom: none;
 }
 
@@ -1718,4 +1759,5 @@ const CSS = `
   font-size: 0.875rem;
   padding: 2rem 1rem;
 }
+
 `;
