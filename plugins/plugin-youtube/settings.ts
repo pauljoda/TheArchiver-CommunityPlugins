@@ -28,7 +28,8 @@ export const pluginSettings: PluginSettingDefinition[] = [
     label: "Default Library Folder",
     description:
       "Default folder within your downloads directory for downloaded content. " +
-      "Used when no per-site override matches (default: yt-dlp)",
+      "Used when no per-site override matches.",
+    defaultValue: "yt-dlp",
     required: false,
     sortOrder: 0,
   },
