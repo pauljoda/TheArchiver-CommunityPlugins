@@ -64,22 +64,18 @@ export function parseBlueskyUrl(url: string): ParsedBlueskyUrl | null {
 // =============================================================================
 
 const BLUESKY_API_BASE = "https://public.api.bsky.app";
-const BLUESKY_MIN_REQUEST_INTERVAL_MS = 100;
-let lastBlueskyRequestTime = 0;
+
+// Rate-limited fetch function, initialized in downloadBluesky() via helpers.http.createRateLimiter()
+let blueskyFetch: ((url: string, options?: RequestInit & { logger?: PluginLogger }) => Promise<Response>) | null = null;
 
 async function fetchBlueskyJson(
   endpoint: string,
   params: Record<string, string>,
   logger: PluginLogger
 ): Promise<unknown> {
-  const now = Date.now();
-  const elapsed = now - lastBlueskyRequestTime;
-  if (elapsed < BLUESKY_MIN_REQUEST_INTERVAL_MS) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, BLUESKY_MIN_REQUEST_INTERVAL_MS - elapsed)
-    );
+  if (!blueskyFetch) {
+    throw new Error("Bluesky rate limiter not initialized — downloadBluesky() must be called first");
   }
-  lastBlueskyRequestTime = Date.now();
 
   const url = new URL(`${BLUESKY_API_BASE}/xrpc/${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
@@ -89,25 +85,12 @@ async function fetchBlueskyJson(
   const fetchUrl = url.toString();
   logger.info(`Fetching: ${fetchUrl}`);
 
-  const res = await fetch(fetchUrl, {
+  const res = await blueskyFetch(fetchUrl, {
     headers: {
       Accept: "application/json",
     },
+    logger,
   });
-
-  if (res.status === 429) {
-    logger.warn("Rate limited by Bluesky. Waiting 30 seconds before retry...");
-    await new Promise((resolve) => setTimeout(resolve, 30000));
-    const retryRes = await fetch(fetchUrl, {
-      headers: { Accept: "application/json" },
-    });
-    if (!retryRes.ok) {
-      throw new Error(
-        `Bluesky API returned ${retryRes.status} after retry: ${retryRes.statusText}`
-      );
-    }
-    return retryRes.json();
-  }
 
   if (!res.ok) {
     throw new Error(`Bluesky API returned ${res.status}: ${res.statusText}`);
@@ -902,7 +885,14 @@ async function handleBlueskyPost(
 // =============================================================================
 
 export async function downloadBluesky(context: DownloadContext): Promise<DownloadResult> {
-  const { url, logger } = context;
+  const { url, logger, helpers } = context;
+
+  // Initialize the rate-limited fetch for Bluesky API calls
+  blueskyFetch = helpers.http.createRateLimiter({
+    minIntervalMs: 100,
+    retryOnStatus: [429],
+    retryDelayMs: 30000,
+  });
 
   const blueskyParsed = parseBlueskyUrl(url);
   if (!blueskyParsed) {

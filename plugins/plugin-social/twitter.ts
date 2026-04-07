@@ -50,8 +50,8 @@ export function parseTwitterUrl(url: string): ParsedTwitterUrl | null {
 // Twitter Syndication API Client
 // =============================================================================
 
-const TWITTER_MIN_REQUEST_INTERVAL_MS = 500;
-let lastTwitterRequestTime = 0;
+// Rate-limited fetch function, initialized in downloadTwitter() via helpers.http.createRateLimiter()
+let twitterFetch: ((url: string, options?: RequestInit & { logger?: PluginLogger }) => Promise<Response>) | null = null;
 
 function generateSyndicationToken(id: string): string {
   return ((Number(id) / 1e15) * Math.PI)
@@ -63,47 +63,26 @@ async function fetchTweetSyndication(
   tweetId: string,
   logger: PluginLogger
 ): Promise<TwitterTweet> {
-  const now = Date.now();
-  const elapsed = now - lastTwitterRequestTime;
-  if (elapsed < TWITTER_MIN_REQUEST_INTERVAL_MS) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, TWITTER_MIN_REQUEST_INTERVAL_MS - elapsed)
-    );
+  if (!twitterFetch) {
+    throw new Error("Twitter rate limiter not initialized — downloadTwitter() must be called first");
   }
-  lastTwitterRequestTime = Date.now();
 
   const token = generateSyndicationToken(tweetId);
   const url = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&lang=en&token=${token}`;
   logger.info(`Fetching tweet: ${url}`);
 
-  const res = await fetch(url, {
+  const res = await twitterFetch(url, {
     headers: {
       Accept: "application/json",
       "User-Agent": "TheArchiver/1.0 (social content archiver)",
     },
+    logger,
   });
 
   if (res.status === 404) {
     throw new Error(
       "Tweet not found. It may have been deleted, be from a private account, or the syndication API may not have access."
     );
-  }
-
-  if (res.status === 429) {
-    logger.warn("Rate limited by Twitter. Waiting 30 seconds before retry...");
-    await new Promise((resolve) => setTimeout(resolve, 30000));
-    const retryRes = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "TheArchiver/1.0 (social content archiver)",
-      },
-    });
-    if (!retryRes.ok) {
-      throw new Error(
-        `Twitter syndication API returned ${retryRes.status} after retry: ${retryRes.statusText}`
-      );
-    }
-    return retryRes.json() as Promise<TwitterTweet>;
   }
 
   if (!res.ok) {
@@ -486,7 +465,14 @@ async function handleTwitterPost(
 // =============================================================================
 
 export async function downloadTwitter(context: DownloadContext): Promise<DownloadResult> {
-  const { url, logger } = context;
+  const { url, logger, helpers } = context;
+
+  // Initialize the rate-limited fetch for Twitter API calls
+  twitterFetch = helpers.http.createRateLimiter({
+    minIntervalMs: 500,
+    retryOnStatus: [429],
+    retryDelayMs: 30000,
+  });
 
   const twitterParsed = parseTwitterUrl(url);
   if (!twitterParsed) {

@@ -96,67 +96,38 @@ export function parseRedditUrl(url: string): ParsedRedditUrl | null {
 // =============================================================================
 
 const USER_AGENT = "TheArchiver/1.0 (reddit content archiver)";
-const MIN_REQUEST_INTERVAL_MS = 6500; // ~9.2 req/min, safely under Reddit's 10/min
-let lastRequestTime = 0;
 
-async function fetchRedditJson(
+// Rate-limited fetch function, initialized in downloadReddit() via helpers.http.createRateLimiter()
+let redditFetch: ((url: string, options?: RequestInit & { logger?: PluginLogger }) => Promise<Response>) | null = null;
+
+async function rateLimitedFetch(
   url: string,
   logger: PluginLogger
 ): Promise<unknown> {
+  if (!redditFetch) {
+    throw new Error("Reddit rate limiter not initialized — downloadReddit() must be called first");
+  }
+
   const parsedUrl = new URL(url);
   parsedUrl.searchParams.set("raw_json", "1");
 
   const fetchUrl = parsedUrl.toString();
   logger.info(`Fetching: ${fetchUrl}`);
 
-  const res = await fetch(fetchUrl, {
+  const res = await redditFetch(fetchUrl, {
     headers: {
       "User-Agent": USER_AGENT,
       Accept: "application/json",
     },
     redirect: "follow",
+    logger,
   });
-
-  if (res.status === 429) {
-    logger.warn("Rate limited by Reddit. Waiting 60 seconds before retry...");
-    await new Promise((resolve) => setTimeout(resolve, 60000));
-
-    const retryRes = await fetch(fetchUrl, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "application/json",
-      },
-      redirect: "follow",
-    });
-
-    if (!retryRes.ok) {
-      throw new Error(
-        `Reddit API returned ${retryRes.status} after retry: ${retryRes.statusText}`
-      );
-    }
-    return retryRes.json();
-  }
 
   if (!res.ok) {
     throw new Error(`Reddit API returned ${res.status}: ${res.statusText}`);
   }
 
   return res.json();
-}
-
-async function rateLimitedFetch(
-  url: string,
-  logger: PluginLogger
-): Promise<unknown> {
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < MIN_REQUEST_INTERVAL_MS) {
-    const waitTime = MIN_REQUEST_INTERVAL_MS - elapsed;
-    logger.info(`Rate limiting: waiting ${waitTime}ms`);
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-  }
-  lastRequestTime = Date.now();
-  return fetchRedditJson(url, logger);
 }
 
 interface RedditListingResponse {
@@ -1301,7 +1272,14 @@ async function handleSubreddit(
 // =============================================================================
 
 export async function downloadReddit(context: DownloadContext): Promise<DownloadResult> {
-  const { url, logger } = context;
+  const { url, logger, helpers } = context;
+
+  // Initialize the rate-limited fetch for Reddit API calls
+  redditFetch = helpers.http.createRateLimiter({
+    minIntervalMs: 6500,
+    retryOnStatus: [429],
+    retryDelayMs: 60000,
+  });
 
   const redditParsed = parseRedditUrl(url);
   if (!redditParsed) {
