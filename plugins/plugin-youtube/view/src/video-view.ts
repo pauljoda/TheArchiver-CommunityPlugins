@@ -12,9 +12,6 @@ import {
 } from "./info-parser";
 import { initTrickplay, destroyTrickplay } from "./trickplay";
 
-/** Video file extensions that browsers can play natively */
-const NATIVE_VIDEO_RE = /\.(mp4|webm|m4v)$/i;
-
 /** Active HLS instance for cleanup */
 let activeHls: Hls | null = null;
 let activeSessionId: string | null = null;
@@ -25,6 +22,46 @@ function uuid(): string {
     const r = (Math.random() * 16) | 0;
     return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
   });
+}
+
+/** Start HLS streaming as a fallback for formats the browser can't decode natively */
+function startHlsFallback(videoEl: HTMLVideoElement, videoFilePath: string): void {
+  const directUrl = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
+
+  if (Hls.isSupported()) {
+    activeSessionId = uuid();
+    const streamUrl =
+      `/api/files/stream?path=${encodeURIComponent(videoFilePath)}` +
+      `&sessionId=${activeSessionId}&seek=0`;
+
+    activeHls = new Hls({ enableWorker: false });
+    activeHls.loadSource(streamUrl);
+    activeHls.attachMedia(videoEl);
+
+    activeHls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+      console.error("[yt-view] HLS fatal error:", data.type, data.details);
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        activeHls?.startLoad();
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        activeHls?.recoverMediaError();
+      } else {
+        // Unrecoverable — last resort: try direct anyway
+        activeHls?.destroy();
+        activeHls = null;
+        videoEl.src = directUrl;
+      }
+    });
+  } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+    // Safari native HLS
+    activeSessionId = uuid();
+    videoEl.src =
+      `/api/files/stream?path=${encodeURIComponent(videoFilePath)}` +
+      `&sessionId=${activeSessionId}&seek=0`;
+  } else {
+    // No HLS support — try direct as last resort
+    videoEl.src = directUrl;
+  }
 }
 
 /** Clean up any active video playback and server-side ffmpeg session */
@@ -298,48 +335,20 @@ async function renderVideoDetail(
   container.appendChild(layout);
 
   // ── Initialize video playback ──
-  const videoFileName = videoFilePath.split("/").pop() || "";
-  const canPlayNative = NATIVE_VIDEO_RE.test(videoFileName);
+  // Prefer direct playback via the preview endpoint — it supports HTTP Range
+  // requests which gives us proper seeking, duration, and buffering for free.
+  // Only fall back to HLS transcoding if the browser can't decode the format.
+  const previewUrl = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
+  videoEl.src = previewUrl;
 
-  if (canPlayNative) {
-    // Browser can play this format natively — use the preview endpoint with Range support
-    videoEl.src = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
-  } else if (Hls.isSupported()) {
-    // Use HLS streaming for MKV and other non-native formats
-    activeSessionId = uuid();
-    const streamUrl =
-      `/api/files/stream?path=${encodeURIComponent(videoFilePath)}` +
-      `&sessionId=${activeSessionId}&seek=0`;
-
-    activeHls = new Hls({
-      enableWorker: false,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-    });
-    activeHls.loadSource(streamUrl);
-    activeHls.attachMedia(videoEl);
-
-    activeHls.on(Hls.Events.ERROR, (_event, data) => {
-      if (data.fatal) {
-        console.error("[yt-view] HLS fatal error:", data.type, data.details);
-        // Try to recover
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          activeHls?.startLoad();
-        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          activeHls?.recoverMediaError();
-        }
-      }
-    });
-  } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-    // Safari native HLS
-    activeSessionId = uuid();
-    videoEl.src =
-      `/api/files/stream?path=${encodeURIComponent(videoFilePath)}` +
-      `&sessionId=${activeSessionId}&seek=0`;
-  } else {
-    // No HLS support — fall back to direct file (may not work for MKV)
-    videoEl.src = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
-  }
+  videoEl.addEventListener(
+    "error",
+    () => {
+      // Format not supported natively (e.g. MKV) — switch to HLS
+      startHlsFallback(videoEl, videoFilePath);
+    },
+    { once: true }
+  );
 
   // ── Initialize trickplay if available ──
   if (info?.duration) {

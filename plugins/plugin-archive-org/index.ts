@@ -109,7 +109,7 @@ async function downloadDirectory(
 
     // Extract links from the directory listing table
     const links: { href: string; text: string }[] = [];
-    $("table.directory-listing-table tbody tr td a").each((_, el) => {
+    $("table.directory-listing-table tbody tr td a").each((_: number, el: Element) => {
       const href = $(el).attr("href") || "";
       const text = $(el).text();
       links.push({ href, text });

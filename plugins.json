@@ -5,7 +5,7 @@
     {
       "id": "archive-org",
       "name": "Archive.org",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "description": "Download content from Archive.org with optional authentication",
       "author": "TheArchiver",
       "downloadFile": "plugin-archive-org.zip",
@@ -32,7 +32,7 @@
     {
       "id": "yt-dlp",
       "name": "yt-dlp",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",
       "author": "TheArchiver",
       "downloadFile": "plugin-youtube.zip",

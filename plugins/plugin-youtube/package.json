@@ -1,6 +1,6 @@
 {
   "name": "plugin-youtube",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "scripts": {
     "build": "tsc && node dist/manifest-gen.js && node view/build.js",

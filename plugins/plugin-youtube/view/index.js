@@ -33828,7 +33828,6 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   }
 
   // view/src/video-view.ts
-  var NATIVE_VIDEO_RE = /\.(mp4|webm|m4v)$/i;
   var activeHls = null;
   var activeSessionId = null;
   function uuid2() {
@@ -33836,6 +33835,34 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       const r = Math.random() * 16 | 0;
       return (c === "x" ? r : r & 3 | 8).toString(16);
     });
+  }
+  function startHlsFallback(videoEl, videoFilePath) {
+    const directUrl = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
+    if (Hls.isSupported()) {
+      activeSessionId = uuid2();
+      const streamUrl = `/api/files/stream?path=${encodeURIComponent(videoFilePath)}&sessionId=${activeSessionId}&seek=0`;
+      activeHls = new Hls({ enableWorker: false });
+      activeHls.loadSource(streamUrl);
+      activeHls.attachMedia(videoEl);
+      activeHls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        console.error("[yt-view] HLS fatal error:", data.type, data.details);
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          activeHls?.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          activeHls?.recoverMediaError();
+        } else {
+          activeHls?.destroy();
+          activeHls = null;
+          videoEl.src = directUrl;
+        }
+      });
+    } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+      activeSessionId = uuid2();
+      videoEl.src = `/api/files/stream?path=${encodeURIComponent(videoFilePath)}&sessionId=${activeSessionId}&seek=0`;
+    } else {
+      videoEl.src = directUrl;
+    }
   }
   function destroyVideoView() {
     if (activeHls) {
@@ -34023,36 +34050,15 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       layout.appendChild(catsContainer);
     }
     container.appendChild(layout);
-    const videoFileName = videoFilePath.split("/").pop() || "";
-    const canPlayNative = NATIVE_VIDEO_RE.test(videoFileName);
-    if (canPlayNative) {
-      videoEl.src = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
-    } else if (Hls.isSupported()) {
-      activeSessionId = uuid2();
-      const streamUrl = `/api/files/stream?path=${encodeURIComponent(videoFilePath)}&sessionId=${activeSessionId}&seek=0`;
-      activeHls = new Hls({
-        enableWorker: false,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60
-      });
-      activeHls.loadSource(streamUrl);
-      activeHls.attachMedia(videoEl);
-      activeHls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          console.error("[yt-view] HLS fatal error:", data.type, data.details);
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            activeHls?.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            activeHls?.recoverMediaError();
-          }
-        }
-      });
-    } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-      activeSessionId = uuid2();
-      videoEl.src = `/api/files/stream?path=${encodeURIComponent(videoFilePath)}&sessionId=${activeSessionId}&seek=0`;
-    } else {
-      videoEl.src = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
-    }
+    const previewUrl = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;
+    videoEl.src = previewUrl;
+    videoEl.addEventListener(
+      "error",
+      () => {
+        startHlsFallback(videoEl, videoFilePath);
+      },
+      { once: true }
+    );
     if (info?.duration) {
       initTrickplay(
         videoEl,
