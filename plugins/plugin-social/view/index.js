@@ -2194,13 +2194,6 @@
     );
     return results;
   }
-  function chunkArray(items, size) {
-    const result = [];
-    for (let index = 0; index < items.length; index += size) {
-      result.push(items.slice(index, index + size));
-    }
-    return result;
-  }
   function nextFrame() {
     return new Promise((resolve) => {
       requestAnimationFrame(() => resolve());
@@ -2776,10 +2769,9 @@
     card.appendChild(engagement);
     return card;
   }
-  var BATCH_SIZE = 20;
-  var INITIAL_INDEX_BATCH = 24;
-  var INDEX_BATCH_SIZE = 48;
-  var INDEX_CONCURRENCY = 24;
+  var RENDER_BATCH = 20;
+  var STUB_CONCURRENCY = 30;
+  var ENRICH_CONCURRENCY = 6;
   function debounce(fn, ms) {
     let timer;
     return () => {
@@ -2802,7 +2794,7 @@
     return m.title.toLowerCase().includes(term) || m.author.toLowerCase().includes(term) || (m.flair || "").toLowerCase().includes(term) || (m.selftext || "").toLowerCase().includes(term);
   }
   async function renderRedditTimeline(container, api, subredditPath, onNavigate) {
-    container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
+    container.innerHTML = `<div class="reddit-loading">Loading posts...</div>`;
     const entries = await api.fetchFiles(subredditPath);
     const postDirs = entries.filter((e) => e.isDirectory);
     if (postDirs.length === 0) {
@@ -2818,28 +2810,23 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const subredditAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const orderedPostDirs = [...postDirs].sort(
-      (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-    );
-    async function loadStubBatch(dirs) {
-      const stubs = await mapLimit(dirs, INDEX_CONCURRENCY, async (dir) => {
-        const metadata = await fetchPostMetadata(api, dir.path);
-        return metadata ? { path: dir.path, metadata } : null;
-      });
-      return stubs.filter((stub) => stub !== null);
-    }
-    const indexedStubs = await loadStubBatch(
-      orderedPostDirs.slice(0, INITIAL_INDEX_BATCH)
+    let loadedCount = 0;
+    const statusEl = container.querySelector(".reddit-loading");
+    const allStubs = await mapLimit(postDirs, STUB_CONCURRENCY, async (dir) => {
+      const metadata = await fetchPostMetadata(api, dir.path);
+      loadedCount++;
+      if (statusEl && loadedCount % 10 === 0) {
+        statusEl.textContent = `Loading posts... ${loadedCount}/${postDirs.length}`;
+      }
+      return metadata ? { path: dir.path, metadata } : null;
+    });
+    const indexedStubs = allStubs.filter(
+      (stub) => stub !== null
     );
     let sortMode = "new";
     let searchTerm = "";
-    let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
-    let indexPromise = null;
-    let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
     function applySortAndFilter() {
-      const source = indexedStubs;
-      let list = searchTerm ? source.filter((s) => matchesRedditSearch(s, searchTerm)) : source;
-      list = [...list];
+      let list = searchTerm ? indexedStubs.filter((s) => matchesRedditSearch(s, searchTerm)) : [...indexedStubs];
       if (sortMode === "new") {
         list.sort(
           (a, b) => new Date(b.metadata.created).getTime() - new Date(a.metadata.created).getTime()
@@ -2879,12 +2866,10 @@
       <option value="new">Newest</option>
       <option value="top">Top</option>
     </select>
-    <span class="timeline-status">${escapeHtml2(indexingStatus)}</span>
   `;
     container.appendChild(controls);
     const searchInput = controls.querySelector(".timeline-search");
     const sortSelect = controls.querySelector(".rdt-sort-select");
-    const statusEl = controls.querySelector(".timeline-status");
     const timeline = document.createElement("div");
     timeline.className = "rdt-timeline";
     container.appendChild(timeline);
@@ -2895,13 +2880,6 @@
       while (lazyCards.length > 0) {
         lazyCards.pop()?.destroy();
       }
-    }
-    function updateIndexStatus(status) {
-      if (isDisposed) {
-        return;
-      }
-      indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
-      statusEl.textContent = isIndexComplete ? "" : indexingStatus;
     }
     function appendPostCard(post, index) {
       const lazyCard = new LazyFeedCard({
@@ -2927,15 +2905,16 @@
       lazyCards.push(lazyCard);
     }
     async function renderNextBatch() {
-      if (isDisposed) {
-        return;
-      }
-      if (isLoading || renderedCount >= filtered.length) {
+      if (isDisposed || isLoading || renderedCount >= filtered.length) {
         return;
       }
       isLoading = true;
-      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
-      const enriched = await Promise.all(batch.map((stub) => enrichPost(api, stub)));
+      const batch = filtered.slice(renderedCount, renderedCount + RENDER_BATCH);
+      const enriched = await mapLimit(
+        batch,
+        ENRICH_CONCURRENCY,
+        (stub) => enrichPost(api, stub)
+      );
       const startIndex = renderedCount;
       for (let index = 0; index < enriched.length; index += 1) {
         appendPostCard(enriched[index], startIndex + index);
@@ -2958,33 +2937,6 @@
       }
       await renderNextBatch();
     }
-    async function ensureIndexedForCurrentFilters() {
-      const needsFullIndex = Boolean(searchTerm) || sortMode === "top";
-      if (!needsFullIndex || isIndexComplete || !indexPromise) {
-        return;
-      }
-      updateIndexStatus("Finishing index\u2026");
-      await indexPromise;
-      updateIndexStatus();
-    }
-    indexPromise = (async () => {
-      const remainingBatches = chunkArray(
-        orderedPostDirs.slice(INITIAL_INDEX_BATCH),
-        INDEX_BATCH_SIZE
-      );
-      for (const batch of remainingBatches) {
-        const loaded = await loadStubBatch(batch);
-        indexedStubs.push(...loaded);
-        updateIndexStatus();
-        if (!searchTerm && sortMode === "new") {
-          filtered.push(...loaded);
-          await nextFrame();
-          void renderNextBatch();
-        }
-      }
-      isIndexComplete = true;
-      updateIndexStatus();
-    })();
     scrollObserver = new IntersectionObserver(
       (entries2) => {
         if (entries2[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -2994,26 +2946,16 @@
       { rootMargin: "600px" }
     );
     scrollObserver.observe(sentinel);
-    const runSortChange = async () => {
-      sortMode = sortSelect.value;
-      await ensureIndexedForCurrentFilters();
-      await resetAndRender();
-    };
     const handleSortChange = () => {
-      void runSortChange();
+      sortMode = sortSelect.value;
+      void resetAndRender();
     };
     sortSelect.addEventListener("change", handleSortChange);
     const handleSearchInput = debounce(() => {
       searchTerm = searchInput.value.trim().toLowerCase();
-      void (async () => {
-        await ensureIndexedForCurrentFilters();
-        await resetAndRender();
-      })();
+      void resetAndRender();
     }, 300);
-    searchInput.addEventListener(
-      "input",
-      handleSearchInput
-    );
+    searchInput.addEventListener("input", handleSearchInput);
     await resetAndRender();
     return () => {
       isDisposed = true;
@@ -3776,10 +3718,9 @@
     card.appendChild(engagement);
     return card;
   }
-  var BATCH_SIZE2 = 20;
-  var INITIAL_INDEX_BATCH2 = 24;
-  var INDEX_BATCH_SIZE2 = 48;
-  var INDEX_CONCURRENCY2 = 24;
+  var RENDER_BATCH2 = 20;
+  var STUB_CONCURRENCY2 = 30;
+  var ENRICH_CONCURRENCY2 = 6;
   function debounce2(fn, ms) {
     let timer;
     return () => {
@@ -3805,7 +3746,7 @@
     return m.text.toLowerCase().includes(term) || m.authorHandle.toLowerCase().includes(term) || (m.displayName || "").toLowerCase().includes(term);
   }
   async function renderBlueskyTimeline(container, api, profilePath, onNavigate) {
-    container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
+    container.innerHTML = `<div class="reddit-loading">Loading posts...</div>`;
     const entries = await api.fetchFiles(profilePath);
     const postDirs = entries.filter((e) => e.isDirectory);
     if (postDirs.length === 0) {
@@ -3821,27 +3762,23 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const profileAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const orderedPostDirs = [...postDirs].sort(
-      (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-    );
-    async function loadStubBatch(dirs) {
-      const stubs = await mapLimit(dirs, INDEX_CONCURRENCY2, async (dir) => {
-        const metadata = await fetchBlueskyPostMetadata(api, dir.path);
-        return metadata ? { path: dir.path, metadata } : null;
-      });
-      return stubs.filter((stub) => stub !== null);
-    }
-    const indexedStubs = await loadStubBatch(
-      orderedPostDirs.slice(0, INITIAL_INDEX_BATCH2)
+    let loadedCount = 0;
+    const statusEl = container.querySelector(".reddit-loading");
+    const allStubs = await mapLimit(postDirs, STUB_CONCURRENCY2, async (dir) => {
+      const metadata = await fetchBlueskyPostMetadata(api, dir.path);
+      loadedCount++;
+      if (statusEl && loadedCount % 10 === 0) {
+        statusEl.textContent = `Loading posts... ${loadedCount}/${postDirs.length}`;
+      }
+      return metadata ? { path: dir.path, metadata } : null;
+    });
+    const indexedStubs = allStubs.filter(
+      (stub) => stub !== null
     );
     let sortMode = "new";
     let searchTerm = "";
-    let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
-    let indexPromise = null;
-    let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
     function applySortAndFilter() {
-      const source = indexedStubs;
-      let list = searchTerm ? source.filter((s) => matchesBlueskySearch(s, searchTerm)) : [...source];
+      let list = searchTerm ? indexedStubs.filter((s) => matchesBlueskySearch(s, searchTerm)) : [...indexedStubs];
       const dir = sortMode === "new" ? -1 : 1;
       list.sort(
         (a, b) => dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
@@ -3881,12 +3818,10 @@
       <option value="new">Newest</option>
       <option value="old">Oldest</option>
     </select>
-    <span class="timeline-status">${escapeHtml6(indexingStatus)}</span>
   `;
     container.appendChild(controls);
     const searchInput = controls.querySelector(".timeline-search");
     const sortSelect = controls.querySelector(".timeline-sort");
-    const statusEl = controls.querySelector(".timeline-status");
     const timeline = document.createElement("div");
     timeline.className = "bluesky-timeline";
     container.appendChild(timeline);
@@ -3897,13 +3832,6 @@
       while (lazyCards.length > 0) {
         lazyCards.pop()?.destroy();
       }
-    }
-    function updateIndexStatus(status) {
-      if (isDisposed) {
-        return;
-      }
-      indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
-      statusEl.textContent = isIndexComplete ? "" : indexingStatus;
     }
     function appendPostCard(post, index) {
       const lazyCard = new LazyFeedCard({
@@ -3929,16 +3857,15 @@
       lazyCards.push(lazyCard);
     }
     async function renderNextBatch() {
-      if (isDisposed) {
-        return;
-      }
-      if (isLoading || renderedCount >= filtered.length) {
+      if (isDisposed || isLoading || renderedCount >= filtered.length) {
         return;
       }
       isLoading = true;
-      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE2);
-      const enriched = await Promise.all(
-        batch.map((stub) => enrichBlueskyPost(api, stub))
+      const batch = filtered.slice(renderedCount, renderedCount + RENDER_BATCH2);
+      const enriched = await mapLimit(
+        batch,
+        ENRICH_CONCURRENCY2,
+        (stub) => enrichBlueskyPost(api, stub)
       );
       const startIndex = renderedCount;
       for (let index = 0; index < enriched.length; index += 1) {
@@ -3962,33 +3889,6 @@
       }
       await renderNextBatch();
     }
-    async function ensureIndexedForCurrentFilters() {
-      const needsFullIndex = Boolean(searchTerm) || sortMode === "old";
-      if (!needsFullIndex || isIndexComplete || !indexPromise) {
-        return;
-      }
-      updateIndexStatus("Finishing index\u2026");
-      await indexPromise;
-      updateIndexStatus();
-    }
-    indexPromise = (async () => {
-      const remainingBatches = chunkArray(
-        orderedPostDirs.slice(INITIAL_INDEX_BATCH2),
-        INDEX_BATCH_SIZE2
-      );
-      for (const batch of remainingBatches) {
-        const loaded = await loadStubBatch(batch);
-        indexedStubs.push(...loaded);
-        updateIndexStatus();
-        if (!searchTerm && sortMode === "new") {
-          filtered.push(...loaded);
-          await nextFrame();
-          void renderNextBatch();
-        }
-      }
-      isIndexComplete = true;
-      updateIndexStatus();
-    })();
     scrollObserver = new IntersectionObserver(
       (entries2) => {
         if (entries2[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -3998,26 +3898,16 @@
       { rootMargin: "600px" }
     );
     scrollObserver.observe(sentinel);
-    const runSortChange = async () => {
-      sortMode = sortSelect.value;
-      await ensureIndexedForCurrentFilters();
-      await resetAndRender();
-    };
     const handleSortChange = () => {
-      void runSortChange();
+      sortMode = sortSelect.value;
+      void resetAndRender();
     };
     sortSelect.addEventListener("change", handleSortChange);
     const handleSearchInput = debounce2(() => {
       searchTerm = searchInput.value.trim().toLowerCase();
-      void (async () => {
-        await ensureIndexedForCurrentFilters();
-        await resetAndRender();
-      })();
+      void resetAndRender();
     }, 300);
-    searchInput.addEventListener(
-      "input",
-      handleSearchInput
-    );
+    searchInput.addEventListener("input", handleSearchInput);
     await resetAndRender();
     return () => {
       isDisposed = true;
@@ -4567,7 +4457,7 @@
     card.appendChild(engagement);
     return card;
   }
-  var BATCH_SIZE3 = 20;
+  var BATCH_SIZE = 20;
   function debounce3(fn, ms) {
     let timer;
     return () => {
@@ -4701,7 +4591,7 @@
         return;
       }
       isLoading = true;
-      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE3);
+      const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
       const enriched = await Promise.all(
         batch.map((stub) => enrichTwitterPost(api, stub))
       );

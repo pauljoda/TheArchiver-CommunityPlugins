@@ -1,7 +1,7 @@
 import type { PluginViewAPI, FileEntry, PostMetadata } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
 import { LazyFeedCard } from "./lazy-feed-card";
-import { chunkArray, mapLimit, nextFrame } from "./async-utils";
+import { mapLimit } from "./async-utils";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -286,10 +286,12 @@ function renderPostCard(
   return card;
 }
 
-const BATCH_SIZE = 20;
-const INITIAL_INDEX_BATCH = 24;
-const INDEX_BATCH_SIZE = 48;
-const INDEX_CONCURRENCY = 24;
+/** How many cards to enrich + append per scroll batch */
+const RENDER_BATCH = 20;
+/** Concurrency for loading .nfo stubs (small XML files, blast through them) */
+const STUB_CONCURRENCY = 30;
+/** Concurrency for enriching posts (directory listing for media) */
+const ENRICH_CONCURRENCY = 6;
 
 interface PostStub {
   path: string;
@@ -341,7 +343,7 @@ export async function renderRedditTimeline(
   subredditPath: string,
   onNavigate?: (path: string) => void
 ): Promise<() => void> {
-  container.innerHTML = `<div class="reddit-loading">Loading timeline...</div>`;
+  container.innerHTML = `<div class="reddit-loading">Loading posts...</div>`;
 
   const entries = await api.fetchFiles(subredditPath);
   const postDirs = entries.filter((e) => e.isDirectory);
@@ -369,39 +371,30 @@ export async function renderRedditTimeline(
       ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
       : null;
 
-  const orderedPostDirs = [...postDirs].sort(
-    (a, b) =>
-      new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+  // ── Load ALL stubs upfront — .nfo files are tiny, blast through them ──
+  let loadedCount = 0;
+  const statusEl = container.querySelector(".reddit-loading");
+  const allStubs = await mapLimit(postDirs, STUB_CONCURRENCY, async (dir) => {
+    const metadata = await fetchPostMetadata(api, dir.path);
+    loadedCount++;
+    if (statusEl && loadedCount % 10 === 0) {
+      statusEl.textContent = `Loading posts... ${loadedCount}/${postDirs.length}`;
+    }
+    return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+  });
+
+  const indexedStubs = allStubs.filter(
+    (stub): stub is PostStub => stub !== null
   );
 
-  async function loadStubBatch(dirs: FileEntry[]): Promise<PostStub[]> {
-    const stubs = await mapLimit(dirs, INDEX_CONCURRENCY, async (dir) => {
-      const metadata = await fetchPostMetadata(api, dir.path);
-      return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
-    });
-
-    return stubs.filter((stub): stub is PostStub => stub !== null);
-  }
-
-  const indexedStubs = await loadStubBatch(
-    orderedPostDirs.slice(0, INITIAL_INDEX_BATCH)
-  );
-
-  // Sort state
+  // ── Sort / filter state ──
   let sortMode: "new" | "top" = "new";
   let searchTerm = "";
-  let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
-  let indexPromise: Promise<void> | null = null;
-  let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
 
   function applySortAndFilter(): PostStub[] {
-    const source = indexedStubs;
     let list = searchTerm
-      ? source.filter((s) => matchesRedditSearch(s, searchTerm))
-      : source;
-
-    // Need a copy to avoid mutating the original when filtering
-    list = [...list];
+      ? indexedStubs.filter((s) => matchesRedditSearch(s, searchTerm))
+      : [...indexedStubs];
 
     if (sortMode === "new") {
       list.sort(
@@ -452,13 +445,11 @@ export async function renderRedditTimeline(
       <option value="new">Newest</option>
       <option value="top">Top</option>
     </select>
-    <span class="timeline-status">${escapeHtml(indexingStatus)}</span>
   `;
   container.appendChild(controls);
 
   const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
   const sortSelect = controls.querySelector<HTMLSelectElement>(".rdt-sort-select")!;
-  const statusEl = controls.querySelector<HTMLElement>(".timeline-status")!;
 
   // -- Timeline container --
   const timeline = document.createElement("div");
@@ -473,14 +464,6 @@ export async function renderRedditTimeline(
     while (lazyCards.length > 0) {
       lazyCards.pop()?.destroy();
     }
-  }
-
-  function updateIndexStatus(status?: string): void {
-    if (isDisposed) {
-      return;
-    }
-    indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
-    statusEl.textContent = isIndexComplete ? "" : indexingStatus;
   }
 
   function appendPostCard(post: RedditTimelinePost, index: number): void {
@@ -512,17 +495,15 @@ export async function renderRedditTimeline(
   }
 
   async function renderNextBatch(): Promise<void> {
-    if (isDisposed) {
-      return;
-    }
-
-    if (isLoading || renderedCount >= filtered.length) {
+    if (isDisposed || isLoading || renderedCount >= filtered.length) {
       return;
     }
 
     isLoading = true;
-    const batch = filtered.slice(renderedCount, renderedCount + BATCH_SIZE);
-    const enriched = await Promise.all(batch.map((stub) => enrichPost(api, stub)));
+    const batch = filtered.slice(renderedCount, renderedCount + RENDER_BATCH);
+    const enriched = await mapLimit(batch, ENRICH_CONCURRENCY, (stub) =>
+      enrichPost(api, stub)
+    );
     const startIndex = renderedCount;
 
     for (let index = 0; index < enriched.length; index += 1) {
@@ -552,41 +533,6 @@ export async function renderRedditTimeline(
     await renderNextBatch();
   }
 
-  async function ensureIndexedForCurrentFilters(): Promise<void> {
-    const needsFullIndex = Boolean(searchTerm) || sortMode === "top";
-    if (!needsFullIndex || isIndexComplete || !indexPromise) {
-      return;
-    }
-
-    updateIndexStatus("Finishing index…");
-    await indexPromise;
-    updateIndexStatus();
-  }
-
-  indexPromise = (async () => {
-    const remainingBatches = chunkArray(
-      orderedPostDirs.slice(INITIAL_INDEX_BATCH),
-      INDEX_BATCH_SIZE
-    );
-
-    for (const batch of remainingBatches) {
-      const loaded = await loadStubBatch(batch);
-      indexedStubs.push(...loaded);
-      updateIndexStatus();
-
-      if (!searchTerm && sortMode === "new") {
-        // Append without re-sorting — stubs arrive in modifiedAt-descending
-        // order which is already correct for "newest" display
-        filtered.push(...loaded);
-        await nextFrame();
-        void renderNextBatch();
-      }
-    }
-
-    isIndexComplete = true;
-    updateIndexStatus();
-  })();
-
   scrollObserver = new IntersectionObserver(
     (entries) => {
       if (entries[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -598,30 +544,20 @@ export async function renderRedditTimeline(
   scrollObserver.observe(sentinel);
 
   // Sort handler
-  const runSortChange = async () => {
-    sortMode = sortSelect.value as "new" | "top";
-    await ensureIndexedForCurrentFilters();
-    await resetAndRender();
-  };
   const handleSortChange = () => {
-    void runSortChange();
+    sortMode = sortSelect.value as "new" | "top";
+    void resetAndRender();
   };
   sortSelect.addEventListener("change", handleSortChange);
 
   // Search handler (debounced)
   const handleSearchInput = debounce(() => {
     searchTerm = searchInput.value.trim().toLowerCase();
-    void (async () => {
-      await ensureIndexedForCurrentFilters();
-      await resetAndRender();
-    })();
+    void resetAndRender();
   }, 300);
-  searchInput.addEventListener(
-    "input",
-    handleSearchInput
-  );
+  searchInput.addEventListener("input", handleSearchInput);
 
-  // Initial render
+  // Initial render — stubs are already loaded and sorted
   await resetAndRender();
 
   return () => {
