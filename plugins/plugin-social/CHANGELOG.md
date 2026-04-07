@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Split monolithic `index.ts` (3275 lines) into separate files per platform
+  - `shared.ts` — Type definitions and shared utilities (`decodeHtmlEntities`, `formatUnixTimestamp`)
+  - `reddit.ts` — All Reddit-specific code (URL parsing, API client, media extraction, NFO, download handlers)
+  - `bluesky.ts` — All Bluesky-specific code (URL parsing, API client, media extraction, NFO, download handlers)
+  - `twitter.ts` — All Twitter/X-specific code (URL parsing, syndication API, media extraction, NFO, download handlers)
+  - `index.ts` — Thin orchestrator with plugin definition, settings, and URL dispatch
+- No user-facing behavior changes; purely structural refactor
+
 ## 1.1.1
 
 - Adopt core helpers for `xmlEscape`, `truncateTitle`, `filenameFromUrl`, `getMimeExtension`
