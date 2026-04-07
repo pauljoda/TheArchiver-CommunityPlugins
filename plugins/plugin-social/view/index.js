@@ -56,6 +56,18 @@
   box-shadow: 0 0 0 1px var(--primary);
 }
 
+.reddit-card-loading {
+  opacity: 0.92;
+}
+
+.reddit-card-preview-slot {
+  width: 100%;
+}
+
+.reddit-card-loading .reddit-card-meta-item {
+  color: var(--muted-foreground);
+}
+
 .reddit-card-thumb {
   width: 100%;
   aspect-ratio: 16/10;
@@ -1141,6 +1153,15 @@
   border-color: var(--primary);
 }
 
+.timeline-status {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* \u2500\u2500 Bluesky Post Detail \u2500\u2500 */
 .bluesky-detail {
   max-width: 600px;
@@ -1841,6 +1862,29 @@
   color: var(--muted-foreground);
 }
 
+.rdt-controls .rdt-sort-select {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.rdt-controls .rdt-sort-select:hover,
+.rdt-controls .rdt-sort-select:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
 .timeline-no-results {
   text-align: center;
   color: var(--muted-foreground);
@@ -2130,6 +2174,39 @@
     }
   }
 
+  // view/src/async-utils.ts
+  async function mapLimit(items, limit, mapper) {
+    if (items.length === 0) {
+      return [];
+    }
+    const concurrency = Math.max(1, Math.min(limit, items.length));
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    async function worker() {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    }
+    await Promise.all(
+      Array.from({ length: concurrency }, () => worker())
+    );
+    return results;
+  }
+  function chunkArray(items, size) {
+    const result = [];
+    for (let index = 0; index < items.length; index += size) {
+      result.push(items.slice(index, index + size));
+    }
+    return result;
+  }
+  function nextFrame() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+  }
+
   // view/src/subreddit-grid.ts
   function escapeHtml(text) {
     const div = document.createElement("div");
@@ -2157,7 +2234,9 @@
     if (hasPostContent) {
       preview = { type: "empty" };
     } else if (dirs.length > 0) {
-      const firstChild = dirs[0];
+      const firstChild = [...dirs].sort(
+        (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+      )[0];
       let childFiles;
       try {
         childFiles = await api.fetchFiles(firstChild.path);
@@ -2170,26 +2249,17 @@
       const childDirs = childFiles.filter((f) => f.isDirectory);
       const childIsPost = childContentFiles.some((f) => f.name === "Post.nfo") || childContentFiles.some((f) => isImageFile(f.name));
       if (childIsPost) {
-        let foundImage = false;
-        for (const postDir of dirs.slice(0, 5)) {
-          try {
-            const postFiles = await api.fetchFiles(postDir.path);
-            const img = postFiles.find(
-              (f) => !f.isDirectory && isImageFile(f.name)
-            );
-            if (img) {
-              preview = {
-                type: "image",
-                src: `/api/files/download?path=${encodeURIComponent(img.path)}`
-              };
-              foundImage = true;
-              break;
-            }
-          } catch {
-          }
-        }
-        if (!foundImage) {
-          try {
+        try {
+          const postFiles = await api.fetchFiles(firstChild.path);
+          const img = postFiles.find(
+            (f) => !f.isDirectory && isImageFile(f.name)
+          );
+          if (img) {
+            preview = {
+              type: "image",
+              src: `/api/files/download?path=${encodeURIComponent(img.path)}`
+            };
+          } else {
             const meta = await fetchPostMetadata(api, firstChild.path);
             if (meta) {
               const snippet = meta.selftext ? meta.selftext.slice(0, 120) : meta.title;
@@ -2199,8 +2269,8 @@
                 snippet: snippet || ""
               };
             }
-          } catch {
           }
+        } catch {
         }
       } else if (childDirs.length > 0) {
         const items = dirs.slice(0, 6).map((d) => d.name);
@@ -2238,32 +2308,63 @@
     }
   }
   var PLATFORM_FOLDERS = /* @__PURE__ */ new Set(["reddit", "bluesky", "twitter"]);
-  function renderSubredditCard(sub, depth) {
+  function getDisplayName(sub, depth) {
     const nameLower = sub.name.toLowerCase();
     const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
     const isUser = !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
-    let displayName;
     if (isPlatformFolder || depth === 0) {
-      displayName = sub.name;
-    } else if (isUser) {
-      displayName = "u/" + sub.name.replace(/^u[_/]/, "");
-    } else {
-      const pathLower = sub.path.toLowerCase();
-      const inBluesky = pathLower.includes("/bluesky/");
-      const inTwitter = pathLower.includes("/twitter/");
-      displayName = inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
+      return sub.name;
     }
-    return `
-    <div class="reddit-card" data-path="${escapeHtml(sub.path)}">
-      ${renderPreview(sub.preview, isUser)}
-      <div class="reddit-card-body">
-        <div class="reddit-card-title">${escapeHtml(displayName)}</div>
-        <div class="reddit-card-meta">
-          <span class="reddit-card-meta-item">${sub.postCount} ${sub.postCount === 1 ? "item" : "items"}</span>
-        </div>
+    if (isUser) {
+      return "u/" + sub.name.replace(/^u[_/]/, "");
+    }
+    const pathLower = sub.path.toLowerCase();
+    const inBluesky = pathLower.includes("/bluesky/");
+    const inTwitter = pathLower.includes("/twitter/");
+    return inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
+  }
+  function createSubredditCard(entry, depth) {
+    const card = document.createElement("div");
+    card.className = "reddit-card reddit-card-loading";
+    card.dataset.path = entry.path;
+    const displayName = getDisplayName(entry, depth);
+    const nameLower = entry.name.toLowerCase();
+    const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
+    const isUser = !isPlatformFolder && (entry.name.startsWith("u_") || entry.name.startsWith("u/"));
+    card.innerHTML = `
+    <div class="reddit-card-preview-slot">
+      ${renderPreview({ type: "empty" }, isUser)}
+    </div>
+    <div class="reddit-card-body">
+      <div class="reddit-card-title">${escapeHtml(displayName)}</div>
+      <div class="reddit-card-meta">
+        <span class="reddit-card-meta-item">Loading\u2026</span>
       </div>
     </div>
   `;
+    return card;
+  }
+  function updateSubredditCard(card, sub, depth) {
+    const nameLower = sub.name.toLowerCase();
+    const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
+    const isUser = !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
+    const previewSlot = card.querySelector(".reddit-card-preview-slot");
+    const title = card.querySelector(".reddit-card-title");
+    const meta = card.querySelector(".reddit-card-meta");
+    if (previewSlot) {
+      previewSlot.innerHTML = renderPreview(sub.preview, isUser);
+    }
+    if (title) {
+      title.textContent = getDisplayName(sub, depth);
+    }
+    if (meta) {
+      meta.innerHTML = `
+      <span class="reddit-card-meta-item">
+        ${sub.postCount} ${sub.postCount === 1 ? "item" : "items"}
+      </span>
+    `;
+    }
+    card.classList.remove("reddit-card-loading");
   }
   async function renderSubredditGrid(container, api, rootPath, onNavigate) {
     container.innerHTML = `<div class="reddit-loading">Loading...</div>`;
@@ -2278,27 +2379,92 @@
     `;
       return;
     }
-    const subs = await Promise.all(
-      dirs.map((dir) => loadSubredditInfo(api, dir))
-    );
-    subs.sort((a, b) => b.postCount - a.postCount);
     const tracked = api.trackedDirectory.replace(/\/+$/, "");
     const current = rootPath.replace(/\/+$/, "");
     const isTopLevel = current === tracked;
     const depth = isTopLevel ? 0 : current.slice(tracked.length + 1).split("/").filter(Boolean).length;
-    const heading = isTopLevel ? `${subs.length} archived` : `${rootPath.split("/").pop()} \u2014 ${subs.length} items`;
-    container.innerHTML = `
-    <div class="reddit-section-heading">${escapeHtml(heading)}</div>
-    <div class="reddit-grid">
-      ${subs.map((s) => renderSubredditCard(s, depth)).join("")}
-    </div>
-  `;
-    container.querySelectorAll(".reddit-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        const path = card.dataset.path;
-        if (path) onNavigate(path);
-      });
+    const heading = isTopLevel ? `${dirs.length} archived` : `${rootPath.split("/").pop()} \u2014 ${dirs.length} items`;
+    container.innerHTML = "";
+    const headingEl = document.createElement("div");
+    headingEl.className = "reddit-section-heading";
+    headingEl.textContent = heading;
+    container.appendChild(headingEl);
+    const grid = document.createElement("div");
+    grid.className = "reddit-grid";
+    container.appendChild(grid);
+    const cardsByPath = /* @__PURE__ */ new Map();
+    const entriesByPath = /* @__PURE__ */ new Map();
+    dirs.forEach((dir) => {
+      entriesByPath.set(dir.path, dir);
+      const card = createSubredditCard(dir, depth);
+      cardsByPath.set(dir.path, card);
+      grid.appendChild(card);
     });
+    grid.addEventListener("click", (event) => {
+      const target = event.target;
+      const card = target.closest(".reddit-card");
+      const path = card?.dataset.path;
+      if (path) {
+        onNavigate(path);
+      }
+    });
+    const hydrateQueue = [];
+    const queuedPaths = /* @__PURE__ */ new Set();
+    let activeHydrators = 0;
+    async function pumpHydrators() {
+      while (activeHydrators < 6 && hydrateQueue.length > 0) {
+        const entry = hydrateQueue.shift();
+        if (!entry) {
+          break;
+        }
+        activeHydrators += 1;
+        void (async () => {
+          try {
+            const info = await loadSubredditInfo(api, entry);
+            const card = cardsByPath.get(entry.path);
+            if (card?.isConnected) {
+              updateSubredditCard(card, info, depth);
+            }
+          } finally {
+            activeHydrators -= 1;
+            queuedPaths.delete(entry.path);
+            void pumpHydrators();
+          }
+        })();
+      }
+    }
+    const observer = new IntersectionObserver(
+      (entries2) => {
+        for (const entry of entries2) {
+          if (!entry.isIntersecting) {
+            continue;
+          }
+          const card = entry.target;
+          const path = card.dataset.path;
+          if (!path || queuedPaths.has(path)) {
+            observer.unobserve(card);
+            continue;
+          }
+          const dir = entriesByPath.get(path);
+          if (dir) {
+            hydrateQueue.push(dir);
+            queuedPaths.add(path);
+            void pumpHydrators();
+          }
+          observer.unobserve(card);
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    cardsByPath.forEach((card) => observer.observe(card));
+    dirs.slice(0, 8).forEach((dir) => {
+      if (!queuedPaths.has(dir.path)) {
+        hydrateQueue.push(dir);
+        queuedPaths.add(dir.path);
+      }
+    });
+    await nextFrame();
+    void pumpHydrators();
   }
 
   // view/src/lazy-feed-card.ts
@@ -2611,6 +2777,9 @@
     return card;
   }
   var BATCH_SIZE = 20;
+  var INITIAL_INDEX_BATCH = 24;
+  var INDEX_BATCH_SIZE = 48;
+  var INDEX_CONCURRENCY = 8;
   function debounce(fn, ms) {
     let timer;
     return () => {
@@ -2649,16 +2818,27 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const subredditAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const stubs = (await Promise.all(
-      postDirs.map(async (dir) => {
+    const orderedPostDirs = [...postDirs].sort(
+      (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    );
+    async function loadStubBatch(dirs) {
+      const stubs = await mapLimit(dirs, INDEX_CONCURRENCY, async (dir) => {
         const metadata = await fetchPostMetadata(api, dir.path);
         return metadata ? { path: dir.path, metadata } : null;
-      })
-    )).filter((s) => s !== null);
+      });
+      return stubs.filter((stub) => stub !== null);
+    }
+    const indexedStubs = await loadStubBatch(
+      orderedPostDirs.slice(0, INITIAL_INDEX_BATCH)
+    );
     let sortMode = "new";
     let searchTerm = "";
+    let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
+    let indexPromise = null;
+    let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
     function applySortAndFilter() {
-      let list = searchTerm ? stubs.filter((s) => matchesRedditSearch(s, searchTerm)) : stubs;
+      const source = indexedStubs;
+      let list = searchTerm ? source.filter((s) => matchesRedditSearch(s, searchTerm)) : source;
       list = [...list];
       if (sortMode === "new") {
         list.sort(
@@ -2674,6 +2854,7 @@
     let isLoading = false;
     let scrollObserver = null;
     const lazyCards = [];
+    let isDisposed = false;
     container.innerHTML = "";
     const subredditName = subredditPath.split("/").pop() || "";
     const profileHeader = document.createElement("div");
@@ -2686,7 +2867,7 @@
     ${avatarHtml}
     <div class="rdt-profile-info">
       <h2 class="rdt-profile-name">r/${escapeHtml2(subredditName)}</h2>
-      <span class="rdt-profile-count">${stubs.length} archived posts</span>
+      <span class="rdt-profile-count">${postDirs.length} archived posts</span>
     </div>
   `;
     container.appendChild(profileHeader);
@@ -2698,10 +2879,12 @@
       <option value="new">Newest</option>
       <option value="top">Top</option>
     </select>
+    <span class="timeline-status">${escapeHtml2(indexingStatus)}</span>
   `;
     container.appendChild(controls);
     const searchInput = controls.querySelector(".timeline-search");
     const sortSelect = controls.querySelector(".rdt-sort-select");
+    const statusEl = controls.querySelector(".timeline-status");
     const timeline = document.createElement("div");
     timeline.className = "rdt-timeline";
     container.appendChild(timeline);
@@ -2712,6 +2895,13 @@
       while (lazyCards.length > 0) {
         lazyCards.pop()?.destroy();
       }
+    }
+    function updateIndexStatus(status) {
+      if (isDisposed) {
+        return;
+      }
+      indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
+      statusEl.textContent = isIndexComplete ? "" : indexingStatus;
     }
     function appendPostCard(post, index) {
       const lazyCard = new LazyFeedCard({
@@ -2737,6 +2927,9 @@
       lazyCards.push(lazyCard);
     }
     async function renderNextBatch() {
+      if (isDisposed) {
+        return;
+      }
       if (isLoading || renderedCount >= filtered.length) {
         return;
       }
@@ -2751,6 +2944,9 @@
       isLoading = false;
     }
     async function resetAndRender() {
+      if (isDisposed) {
+        return;
+      }
       filtered = applySortAndFilter();
       renderedCount = 0;
       isLoading = false;
@@ -2762,6 +2958,33 @@
       }
       await renderNextBatch();
     }
+    async function ensureIndexedForCurrentFilters() {
+      const needsFullIndex = Boolean(searchTerm) || sortMode === "top";
+      if (!needsFullIndex || isIndexComplete || !indexPromise) {
+        return;
+      }
+      updateIndexStatus("Finishing index\u2026");
+      await indexPromise;
+      updateIndexStatus();
+    }
+    indexPromise = (async () => {
+      const remainingBatches = chunkArray(
+        orderedPostDirs.slice(INITIAL_INDEX_BATCH),
+        INDEX_BATCH_SIZE
+      );
+      for (const batch of remainingBatches) {
+        const loaded = await loadStubBatch(batch);
+        indexedStubs.push(...loaded);
+        updateIndexStatus();
+        if (!searchTerm && sortMode === "new") {
+          filtered = applySortAndFilter();
+          await nextFrame();
+          void renderNextBatch();
+        }
+      }
+      isIndexComplete = true;
+      updateIndexStatus();
+    })();
     scrollObserver = new IntersectionObserver(
       (entries2) => {
         if (entries2[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -2771,14 +2994,21 @@
       { rootMargin: "600px" }
     );
     scrollObserver.observe(sentinel);
-    const handleSortChange = () => {
+    const runSortChange = async () => {
       sortMode = sortSelect.value;
-      resetAndRender();
+      await ensureIndexedForCurrentFilters();
+      await resetAndRender();
+    };
+    const handleSortChange = () => {
+      void runSortChange();
     };
     sortSelect.addEventListener("change", handleSortChange);
     const handleSearchInput = debounce(() => {
       searchTerm = searchInput.value.trim().toLowerCase();
-      resetAndRender();
+      void (async () => {
+        await ensureIndexedForCurrentFilters();
+        await resetAndRender();
+      })();
     }, 300);
     searchInput.addEventListener(
       "input",
@@ -2786,6 +3016,7 @@
     );
     await resetAndRender();
     return () => {
+      isDisposed = true;
       scrollObserver?.disconnect();
       clearRenderedCards();
       sortSelect.removeEventListener("change", handleSortChange);
@@ -3546,6 +3777,9 @@
     return card;
   }
   var BATCH_SIZE2 = 20;
+  var INITIAL_INDEX_BATCH2 = 24;
+  var INDEX_BATCH_SIZE2 = 48;
+  var INDEX_CONCURRENCY2 = 8;
   function debounce2(fn, ms) {
     let timer;
     return () => {
@@ -3587,16 +3821,27 @@
       (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
     );
     const profileAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
-    const stubs = (await Promise.all(
-      postDirs.map(async (dir) => {
+    const orderedPostDirs = [...postDirs].sort(
+      (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    );
+    async function loadStubBatch(dirs) {
+      const stubs = await mapLimit(dirs, INDEX_CONCURRENCY2, async (dir) => {
         const metadata = await fetchBlueskyPostMetadata(api, dir.path);
         return metadata ? { path: dir.path, metadata } : null;
-      })
-    )).filter((s) => s !== null);
+      });
+      return stubs.filter((stub) => stub !== null);
+    }
+    const indexedStubs = await loadStubBatch(
+      orderedPostDirs.slice(0, INITIAL_INDEX_BATCH2)
+    );
     let sortMode = "new";
     let searchTerm = "";
+    let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
+    let indexPromise = null;
+    let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
     function applySortAndFilter() {
-      let list = searchTerm ? stubs.filter((s) => matchesBlueskySearch(s, searchTerm)) : [...stubs];
+      const source = indexedStubs;
+      let list = searchTerm ? source.filter((s) => matchesBlueskySearch(s, searchTerm)) : [...source];
       const dir = sortMode === "new" ? -1 : 1;
       list.sort(
         (a, b) => dir * (new Date(a.metadata.created).getTime() - new Date(b.metadata.created).getTime())
@@ -3608,9 +3853,10 @@
     let isLoading = false;
     let scrollObserver = null;
     const lazyCards = [];
+    let isDisposed = false;
     container.innerHTML = "";
-    if (stubs.length > 0) {
-      const first = stubs[0].metadata;
+    if (indexedStubs.length > 0) {
+      const first = indexedStubs[0].metadata;
       const profileHeader = document.createElement("div");
       profileHeader.className = "bluesky-profile-header";
       let avatarHtml = "";
@@ -3622,7 +3868,7 @@
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml6(first.displayName || first.authorHandle)}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml6(first.authorHandle)}</span>
-        <span class="bluesky-profile-count">${stubs.length} archived posts</span>
+        <span class="bluesky-profile-count">${postDirs.length} archived posts</span>
       </div>
     `;
       container.appendChild(profileHeader);
@@ -3635,10 +3881,12 @@
       <option value="new">Newest</option>
       <option value="old">Oldest</option>
     </select>
+    <span class="timeline-status">${escapeHtml6(indexingStatus)}</span>
   `;
     container.appendChild(controls);
     const searchInput = controls.querySelector(".timeline-search");
     const sortSelect = controls.querySelector(".timeline-sort");
+    const statusEl = controls.querySelector(".timeline-status");
     const timeline = document.createElement("div");
     timeline.className = "bluesky-timeline";
     container.appendChild(timeline);
@@ -3649,6 +3897,13 @@
       while (lazyCards.length > 0) {
         lazyCards.pop()?.destroy();
       }
+    }
+    function updateIndexStatus(status) {
+      if (isDisposed) {
+        return;
+      }
+      indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
+      statusEl.textContent = isIndexComplete ? "" : indexingStatus;
     }
     function appendPostCard(post, index) {
       const lazyCard = new LazyFeedCard({
@@ -3674,6 +3929,9 @@
       lazyCards.push(lazyCard);
     }
     async function renderNextBatch() {
+      if (isDisposed) {
+        return;
+      }
       if (isLoading || renderedCount >= filtered.length) {
         return;
       }
@@ -3690,6 +3948,9 @@
       isLoading = false;
     }
     async function resetAndRender() {
+      if (isDisposed) {
+        return;
+      }
       filtered = applySortAndFilter();
       renderedCount = 0;
       isLoading = false;
@@ -3701,6 +3962,33 @@
       }
       await renderNextBatch();
     }
+    async function ensureIndexedForCurrentFilters() {
+      const needsFullIndex = Boolean(searchTerm) || sortMode === "old";
+      if (!needsFullIndex || isIndexComplete || !indexPromise) {
+        return;
+      }
+      updateIndexStatus("Finishing index\u2026");
+      await indexPromise;
+      updateIndexStatus();
+    }
+    indexPromise = (async () => {
+      const remainingBatches = chunkArray(
+        orderedPostDirs.slice(INITIAL_INDEX_BATCH2),
+        INDEX_BATCH_SIZE2
+      );
+      for (const batch of remainingBatches) {
+        const loaded = await loadStubBatch(batch);
+        indexedStubs.push(...loaded);
+        updateIndexStatus();
+        if (!searchTerm && sortMode === "new") {
+          filtered = applySortAndFilter();
+          await nextFrame();
+          void renderNextBatch();
+        }
+      }
+      isIndexComplete = true;
+      updateIndexStatus();
+    })();
     scrollObserver = new IntersectionObserver(
       (entries2) => {
         if (entries2[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -3710,14 +3998,21 @@
       { rootMargin: "600px" }
     );
     scrollObserver.observe(sentinel);
-    const handleSortChange = () => {
+    const runSortChange = async () => {
       sortMode = sortSelect.value;
-      resetAndRender();
+      await ensureIndexedForCurrentFilters();
+      await resetAndRender();
+    };
+    const handleSortChange = () => {
+      void runSortChange();
     };
     sortSelect.addEventListener("change", handleSortChange);
     const handleSearchInput = debounce2(() => {
       searchTerm = searchInput.value.trim().toLowerCase();
-      resetAndRender();
+      void (async () => {
+        await ensureIndexedForCurrentFilters();
+        await resetAndRender();
+      })();
     }, 300);
     searchInput.addEventListener(
       "input",
@@ -3725,6 +4020,7 @@
     );
     await resetAndRender();
     return () => {
+      isDisposed = true;
       scrollObserver?.disconnect();
       clearRenderedCards();
       sortSelect.removeEventListener("change", handleSortChange);
@@ -4685,6 +4981,58 @@
     container.appendChild(wrapper);
   }
 
+  // view/src/cached-api.ts
+  function shouldCacheFile(path) {
+    return /\.(json|nfo|xml|txt)$/i.test(path);
+  }
+  var SocialViewCache = class {
+    constructor() {
+      __publicField(this, "directoryCache", /* @__PURE__ */ new Map());
+      __publicField(this, "fileCache", /* @__PURE__ */ new Map());
+    }
+    wrap(api) {
+      return {
+        ...api,
+        fetchFiles: (path) => this.fetchFiles(api, path),
+        fetchFile: (path) => this.fetchFile(api, path)
+      };
+    }
+    clear() {
+      this.directoryCache.clear();
+      this.fileCache.clear();
+    }
+    fetchFiles(api, path) {
+      const cached = this.directoryCache.get(path);
+      if (cached) {
+        return cached;
+      }
+      const pending = api.fetchFiles(path);
+      this.directoryCache.set(path, pending);
+      return pending;
+    }
+    async fetchFile(api, path) {
+      if (!shouldCacheFile(path)) {
+        return api.fetchFile(path);
+      }
+      const cached = this.fileCache.get(path);
+      const payloadPromise = cached ?? api.fetchFile(path).then(async (response) => ({
+        status: response.status,
+        statusText: response.statusText,
+        headers: Array.from(response.headers.entries()),
+        body: response.ok ? await response.arrayBuffer() : null
+      }));
+      if (!cached) {
+        this.fileCache.set(path, payloadPromise);
+      }
+      const payload = await payloadPromise;
+      return new Response(payload.body ? payload.body.slice(0) : null, {
+        status: payload.status,
+        statusText: payload.statusText,
+        headers: payload.headers
+      });
+    }
+  };
+
   // view/src/reddit-app.ts
   var METADATA_FILES2 = /* @__PURE__ */ new Set([
     "icon.jpg",
@@ -4774,8 +5122,9 @@
       __publicField(this, "api");
       __publicField(this, "contentEl");
       __publicField(this, "viewCleanup");
+      __publicField(this, "cache", new SocialViewCache());
       this.container = container;
-      this.api = api;
+      this.api = this.cache.wrap(api);
       this.container.innerHTML = "";
       this.container.classList.add("reddit-view");
       injectStyles(this.container);
@@ -4850,12 +5199,13 @@
       }
     }
     onPathChange(newPath, api) {
-      this.api = api;
+      this.api = this.cache.wrap(api);
       this.renderCurrentPath();
     }
     destroy() {
       this.viewCleanup?.();
       this.viewCleanup = void 0;
+      this.cache.clear();
       this.container.classList.remove("reddit-view");
       this.container.innerHTML = "";
     }

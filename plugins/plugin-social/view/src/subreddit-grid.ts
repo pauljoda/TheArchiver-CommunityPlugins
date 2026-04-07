@@ -1,5 +1,6 @@
 import type { PluginViewAPI, SubredditInfo } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
+import { nextFrame } from "./async-utils";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -43,7 +44,10 @@ async function loadSubredditInfo(
     preview = { type: "empty" };
   } else if (dirs.length > 0) {
     // Check if children are posts or more directories
-    const firstChild = dirs[0];
+    const firstChild = [...dirs].sort(
+      (a, b) =>
+        new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    )[0];
     let childFiles;
     try {
       childFiles = await api.fetchFiles(firstChild.path);
@@ -60,31 +64,20 @@ async function loadSubredditInfo(
       childContentFiles.some((f) => isImageFile(f.name));
 
     if (childIsPost) {
-      // Children are posts — try to find image thumbnail or text preview
-      // Scan a few posts for an image
-      let foundImage = false;
-      for (const postDir of dirs.slice(0, 5)) {
-        try {
-          const postFiles = await api.fetchFiles(postDir.path);
-          const img = postFiles.find(
-            (f) => !f.isDirectory && isImageFile(f.name)
-          );
-          if (img) {
-            preview = {
-              type: "image",
-              src: `/api/files/download?path=${encodeURIComponent(img.path)}`,
-            };
-            foundImage = true;
-            break;
-          }
-        } catch {
-          // skip
-        }
-      }
+      // Children are posts — inspect the newest child only so folder grids
+      // paint quickly instead of recursively scanning the whole subtree.
+      try {
+        const postFiles = await api.fetchFiles(firstChild.path);
+        const img = postFiles.find(
+          (f) => !f.isDirectory && isImageFile(f.name)
+        );
 
-      // No images found — try to get a text snippet from the first post
-      if (!foundImage) {
-        try {
+        if (img) {
+          preview = {
+            type: "image",
+            src: `/api/files/download?path=${encodeURIComponent(img.path)}`,
+          };
+        } else {
           const meta = await fetchPostMetadata(api, firstChild.path);
           if (meta) {
             const snippet = meta.selftext
@@ -96,9 +89,9 @@ async function loadSubredditInfo(
               snippet: snippet || "",
             };
           }
-        } catch {
-          // fall through to empty
         }
+      } catch {
+        // fall through to empty
       }
     } else if (childDirs.length > 0) {
       // Children are directories (user profile → subreddit folders)
@@ -149,36 +142,86 @@ function renderPreview(
 /** Known platform folder names that should never get a prefix */
 const PLATFORM_FOLDERS = new Set(["reddit", "bluesky", "twitter"]);
 
-function renderSubredditCard(sub: SubredditInfo, depth: number): string {
+function getDisplayName(sub: Pick<SubredditInfo, "name" | "path">, depth: number): string {
   const nameLower = sub.name.toLowerCase();
   const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-  const isUser = !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
+  const isUser =
+    !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
 
-  let displayName: string;
   if (isPlatformFolder || depth === 0) {
     // Top-level: platform folders like "Reddit", "Bluesky", "Twitter" — no prefix
-    displayName = sub.name;
-  } else if (isUser) {
-    displayName = "u/" + sub.name.replace(/^u[_/]/, "");
-  } else {
-    // Inside a platform folder — use platform-appropriate prefix
-    const pathLower = sub.path.toLowerCase();
-    const inBluesky = pathLower.includes("/bluesky/");
-    const inTwitter = pathLower.includes("/twitter/");
-    displayName = inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
+    return sub.name;
   }
 
-  return `
-    <div class="reddit-card" data-path="${escapeHtml(sub.path)}">
-      ${renderPreview(sub.preview, isUser)}
-      <div class="reddit-card-body">
-        <div class="reddit-card-title">${escapeHtml(displayName)}</div>
-        <div class="reddit-card-meta">
-          <span class="reddit-card-meta-item">${sub.postCount} ${sub.postCount === 1 ? "item" : "items"}</span>
-        </div>
+  if (isUser) {
+    return "u/" + sub.name.replace(/^u[_/]/, "");
+  }
+
+  // Inside a platform folder — use platform-appropriate prefix
+  const pathLower = sub.path.toLowerCase();
+  const inBluesky = pathLower.includes("/bluesky/");
+  const inTwitter = pathLower.includes("/twitter/");
+  return inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
+}
+
+function createSubredditCard(
+  entry: { name: string; path: string },
+  depth: number
+): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "reddit-card reddit-card-loading";
+  card.dataset.path = entry.path;
+
+  const displayName = getDisplayName(entry, depth);
+  const nameLower = entry.name.toLowerCase();
+  const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
+  const isUser =
+    !isPlatformFolder && (entry.name.startsWith("u_") || entry.name.startsWith("u/"));
+
+  card.innerHTML = `
+    <div class="reddit-card-preview-slot">
+      ${renderPreview({ type: "empty" }, isUser)}
+    </div>
+    <div class="reddit-card-body">
+      <div class="reddit-card-title">${escapeHtml(displayName)}</div>
+      <div class="reddit-card-meta">
+        <span class="reddit-card-meta-item">Loading…</span>
       </div>
     </div>
   `;
+
+  return card;
+}
+
+function updateSubredditCard(
+  card: HTMLElement,
+  sub: SubredditInfo,
+  depth: number
+): void {
+  const nameLower = sub.name.toLowerCase();
+  const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
+  const isUser =
+    !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
+
+  const previewSlot = card.querySelector<HTMLElement>(".reddit-card-preview-slot");
+  const title = card.querySelector<HTMLElement>(".reddit-card-title");
+  const meta = card.querySelector<HTMLElement>(".reddit-card-meta");
+
+  if (previewSlot) {
+    previewSlot.innerHTML = renderPreview(sub.preview, isUser);
+  }
+  if (title) {
+    title.textContent = getDisplayName(sub, depth);
+  }
+  if (meta) {
+    meta.innerHTML = `
+      <span class="reddit-card-meta-item">
+        ${sub.postCount} ${sub.postCount === 1 ? "item" : "items"}
+      </span>
+    `;
+  }
+
+  card.classList.remove("reddit-card-loading");
 }
 
 export async function renderSubredditGrid(
@@ -202,14 +245,6 @@ export async function renderSubredditGrid(
     return;
   }
 
-  // Load subreddit info in parallel
-  const subs = await Promise.all(
-    dirs.map((dir) => loadSubredditInfo(api, dir))
-  );
-
-  // Sort by item count descending
-  subs.sort((a, b) => b.postCount - a.postCount);
-
   // Determine heading and depth
   const tracked = api.trackedDirectory.replace(/\/+$/, "");
   const current = rootPath.replace(/\/+$/, "");
@@ -221,20 +256,102 @@ export async function renderSubredditGrid(
     : current.slice(tracked.length + 1).split("/").filter(Boolean).length;
 
   const heading = isTopLevel
-    ? `${subs.length} archived`
-    : `${rootPath.split("/").pop()} — ${subs.length} items`;
+    ? `${dirs.length} archived`
+    : `${rootPath.split("/").pop()} — ${dirs.length} items`;
 
-  container.innerHTML = `
-    <div class="reddit-section-heading">${escapeHtml(heading)}</div>
-    <div class="reddit-grid">
-      ${subs.map((s) => renderSubredditCard(s, depth)).join("")}
-    </div>
-  `;
+  container.innerHTML = "";
 
-  container.querySelectorAll<HTMLElement>(".reddit-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const path = card.dataset.path;
-      if (path) onNavigate(path);
-    });
+  const headingEl = document.createElement("div");
+  headingEl.className = "reddit-section-heading";
+  headingEl.textContent = heading;
+  container.appendChild(headingEl);
+
+  const grid = document.createElement("div");
+  grid.className = "reddit-grid";
+  container.appendChild(grid);
+
+  const cardsByPath = new Map<string, HTMLElement>();
+  const entriesByPath = new Map<string, { name: string; path: string }>();
+
+  dirs.forEach((dir) => {
+    entriesByPath.set(dir.path, dir);
+    const card = createSubredditCard(dir, depth);
+    cardsByPath.set(dir.path, card);
+    grid.appendChild(card);
   });
+
+  grid.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const card = target.closest<HTMLElement>(".reddit-card");
+    const path = card?.dataset.path;
+    if (path) {
+      onNavigate(path);
+    }
+  });
+
+  const hydrateQueue: Array<{ name: string; path: string }> = [];
+  const queuedPaths = new Set<string>();
+  let activeHydrators = 0;
+
+  async function pumpHydrators(): Promise<void> {
+    while (activeHydrators < 6 && hydrateQueue.length > 0) {
+      const entry = hydrateQueue.shift();
+      if (!entry) {
+        break;
+      }
+
+      activeHydrators += 1;
+      void (async () => {
+        try {
+          const info = await loadSubredditInfo(api, entry);
+          const card = cardsByPath.get(entry.path);
+          if (card?.isConnected) {
+            updateSubredditCard(card, info, depth);
+          }
+        } finally {
+          activeHydrators -= 1;
+          queuedPaths.delete(entry.path);
+          void pumpHydrators();
+        }
+      })();
+    }
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+
+        const card = entry.target as HTMLElement;
+        const path = card.dataset.path;
+        if (!path || queuedPaths.has(path)) {
+          observer.unobserve(card);
+          continue;
+        }
+
+        const dir = entriesByPath.get(path);
+        if (dir) {
+          hydrateQueue.push(dir);
+          queuedPaths.add(path);
+          void pumpHydrators();
+        }
+
+        observer.unobserve(card);
+      }
+    },
+    { rootMargin: "600px" }
+  );
+
+  cardsByPath.forEach((card) => observer.observe(card));
+
+  dirs.slice(0, 8).forEach((dir) => {
+    if (!queuedPaths.has(dir.path)) {
+      hydrateQueue.push(dir);
+      queuedPaths.add(dir.path);
+    }
+  });
+  await nextFrame();
+  void pumpHydrators();
 }

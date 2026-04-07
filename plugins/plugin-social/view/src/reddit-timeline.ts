@@ -1,6 +1,7 @@
 import type { PluginViewAPI, FileEntry, PostMetadata } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
 import { LazyFeedCard } from "./lazy-feed-card";
+import { chunkArray, mapLimit, nextFrame } from "./async-utils";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -286,6 +287,9 @@ function renderPostCard(
 }
 
 const BATCH_SIZE = 20;
+const INITIAL_INDEX_BATCH = 24;
+const INDEX_BATCH_SIZE = 48;
+const INDEX_CONCURRENCY = 8;
 
 interface PostStub {
   path: string;
@@ -365,24 +369,36 @@ export async function renderRedditTimeline(
       ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
       : null;
 
-  // Load all metadata upfront (lightweight — just Post.nfo parsing)
-  const stubs = (
-    await Promise.all(
-      postDirs.map(async (dir) => {
-        const metadata = await fetchPostMetadata(api, dir.path);
-        return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
-      })
-    )
-  ).filter((s): s is PostStub => s !== null);
+  const orderedPostDirs = [...postDirs].sort(
+    (a, b) =>
+      new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+  );
+
+  async function loadStubBatch(dirs: FileEntry[]): Promise<PostStub[]> {
+    const stubs = await mapLimit(dirs, INDEX_CONCURRENCY, async (dir) => {
+      const metadata = await fetchPostMetadata(api, dir.path);
+      return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+    });
+
+    return stubs.filter((stub): stub is PostStub => stub !== null);
+  }
+
+  const indexedStubs = await loadStubBatch(
+    orderedPostDirs.slice(0, INITIAL_INDEX_BATCH)
+  );
 
   // Sort state
   let sortMode: "new" | "top" = "new";
   let searchTerm = "";
+  let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
+  let indexPromise: Promise<void> | null = null;
+  let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
 
   function applySortAndFilter(): PostStub[] {
+    const source = indexedStubs;
     let list = searchTerm
-      ? stubs.filter((s) => matchesRedditSearch(s, searchTerm))
-      : stubs;
+      ? source.filter((s) => matchesRedditSearch(s, searchTerm))
+      : source;
 
     // Need a copy to avoid mutating the original when filtering
     list = [...list];
@@ -404,6 +420,7 @@ export async function renderRedditTimeline(
   let isLoading = false;
   let scrollObserver: IntersectionObserver | null = null;
   const lazyCards: LazyFeedCard[] = [];
+  let isDisposed = false;
 
   container.innerHTML = "";
 
@@ -421,7 +438,7 @@ export async function renderRedditTimeline(
     ${avatarHtml}
     <div class="rdt-profile-info">
       <h2 class="rdt-profile-name">r/${escapeHtml(subredditName)}</h2>
-      <span class="rdt-profile-count">${stubs.length} archived posts</span>
+      <span class="rdt-profile-count">${postDirs.length} archived posts</span>
     </div>
   `;
   container.appendChild(profileHeader);
@@ -435,11 +452,13 @@ export async function renderRedditTimeline(
       <option value="new">Newest</option>
       <option value="top">Top</option>
     </select>
+    <span class="timeline-status">${escapeHtml(indexingStatus)}</span>
   `;
   container.appendChild(controls);
 
   const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
   const sortSelect = controls.querySelector<HTMLSelectElement>(".rdt-sort-select")!;
+  const statusEl = controls.querySelector<HTMLElement>(".timeline-status")!;
 
   // -- Timeline container --
   const timeline = document.createElement("div");
@@ -454,6 +473,14 @@ export async function renderRedditTimeline(
     while (lazyCards.length > 0) {
       lazyCards.pop()?.destroy();
     }
+  }
+
+  function updateIndexStatus(status?: string): void {
+    if (isDisposed) {
+      return;
+    }
+    indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
+    statusEl.textContent = isIndexComplete ? "" : indexingStatus;
   }
 
   function appendPostCard(post: RedditTimelinePost, index: number): void {
@@ -485,6 +512,10 @@ export async function renderRedditTimeline(
   }
 
   async function renderNextBatch(): Promise<void> {
+    if (isDisposed) {
+      return;
+    }
+
     if (isLoading || renderedCount >= filtered.length) {
       return;
     }
@@ -503,6 +534,10 @@ export async function renderRedditTimeline(
   }
 
   async function resetAndRender(): Promise<void> {
+    if (isDisposed) {
+      return;
+    }
+
     filtered = applySortAndFilter();
     renderedCount = 0;
     isLoading = false;
@@ -517,6 +552,39 @@ export async function renderRedditTimeline(
     await renderNextBatch();
   }
 
+  async function ensureIndexedForCurrentFilters(): Promise<void> {
+    const needsFullIndex = Boolean(searchTerm) || sortMode === "top";
+    if (!needsFullIndex || isIndexComplete || !indexPromise) {
+      return;
+    }
+
+    updateIndexStatus("Finishing index…");
+    await indexPromise;
+    updateIndexStatus();
+  }
+
+  indexPromise = (async () => {
+    const remainingBatches = chunkArray(
+      orderedPostDirs.slice(INITIAL_INDEX_BATCH),
+      INDEX_BATCH_SIZE
+    );
+
+    for (const batch of remainingBatches) {
+      const loaded = await loadStubBatch(batch);
+      indexedStubs.push(...loaded);
+      updateIndexStatus();
+
+      if (!searchTerm && sortMode === "new") {
+        filtered = applySortAndFilter();
+        await nextFrame();
+        void renderNextBatch();
+      }
+    }
+
+    isIndexComplete = true;
+    updateIndexStatus();
+  })();
+
   scrollObserver = new IntersectionObserver(
     (entries) => {
       if (entries[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -528,16 +596,23 @@ export async function renderRedditTimeline(
   scrollObserver.observe(sentinel);
 
   // Sort handler
-  const handleSortChange = () => {
+  const runSortChange = async () => {
     sortMode = sortSelect.value as "new" | "top";
-    resetAndRender();
+    await ensureIndexedForCurrentFilters();
+    await resetAndRender();
+  };
+  const handleSortChange = () => {
+    void runSortChange();
   };
   sortSelect.addEventListener("change", handleSortChange);
 
   // Search handler (debounced)
   const handleSearchInput = debounce(() => {
     searchTerm = searchInput.value.trim().toLowerCase();
-    resetAndRender();
+    void (async () => {
+      await ensureIndexedForCurrentFilters();
+      await resetAndRender();
+    })();
   }, 300);
   searchInput.addEventListener(
     "input",
@@ -548,6 +623,7 @@ export async function renderRedditTimeline(
   await resetAndRender();
 
   return () => {
+    isDisposed = true;
     scrollObserver?.disconnect();
     clearRenderedCards();
     sortSelect.removeEventListener("change", handleSortChange);

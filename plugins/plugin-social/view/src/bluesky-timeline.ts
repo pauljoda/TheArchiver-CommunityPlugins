@@ -2,6 +2,7 @@ import type { PluginViewAPI, FileEntry, BlueskyPostMetadata } from "./types";
 import { fetchBlueskyPostMetadata } from "./nfo-parser";
 import { renderBlueskyRichText } from "./bluesky-richtext";
 import { LazyFeedCard } from "./lazy-feed-card";
+import { chunkArray, mapLimit, nextFrame } from "./async-utils";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -263,6 +264,9 @@ function renderPostCard(
 }
 
 const BATCH_SIZE = 20;
+const INITIAL_INDEX_BATCH = 24;
+const INDEX_BATCH_SIZE = 48;
+const INDEX_CONCURRENCY = 8;
 
 interface PostStub {
   path: string;
@@ -340,24 +344,36 @@ export async function renderBlueskyTimeline(
     ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
     : null;
 
-  // Load all metadata upfront (lightweight — just Post.nfo parsing)
-  const stubs = (
-    await Promise.all(
-      postDirs.map(async (dir) => {
-        const metadata = await fetchBlueskyPostMetadata(api, dir.path);
-        return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
-      })
-    )
-  ).filter((s): s is PostStub => s !== null);
+  const orderedPostDirs = [...postDirs].sort(
+    (a, b) =>
+      new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+  );
+
+  async function loadStubBatch(dirs: FileEntry[]): Promise<PostStub[]> {
+    const stubs = await mapLimit(dirs, INDEX_CONCURRENCY, async (dir) => {
+      const metadata = await fetchBlueskyPostMetadata(api, dir.path);
+      return metadata ? ({ path: dir.path, metadata } as PostStub) : null;
+    });
+
+    return stubs.filter((stub): stub is PostStub => stub !== null);
+  }
+
+  const indexedStubs = await loadStubBatch(
+    orderedPostDirs.slice(0, INITIAL_INDEX_BATCH)
+  );
 
   // Sort/search state
   let sortMode: "new" | "old" = "new";
   let searchTerm = "";
+  let indexingStatus = `Indexed ${indexedStubs.length}/${postDirs.length}`;
+  let indexPromise: Promise<void> | null = null;
+  let isIndexComplete = indexedStubs.length >= orderedPostDirs.length;
 
   function applySortAndFilter(): PostStub[] {
+    const source = indexedStubs;
     let list = searchTerm
-      ? stubs.filter((s) => matchesBlueskySearch(s, searchTerm))
-      : [...stubs];
+      ? source.filter((s) => matchesBlueskySearch(s, searchTerm))
+      : [...source];
 
     const dir = sortMode === "new" ? -1 : 1;
     list.sort(
@@ -374,12 +390,13 @@ export async function renderBlueskyTimeline(
   let isLoading = false;
   let scrollObserver: IntersectionObserver | null = null;
   const lazyCards: LazyFeedCard[] = [];
+  let isDisposed = false;
 
   container.innerHTML = "";
 
   // Profile header
-  if (stubs.length > 0) {
-    const first = stubs[0].metadata;
+  if (indexedStubs.length > 0) {
+    const first = indexedStubs[0].metadata;
     const profileHeader = document.createElement("div");
     profileHeader.className = "bluesky-profile-header";
 
@@ -393,7 +410,7 @@ export async function renderBlueskyTimeline(
       <div class="bluesky-profile-info">
         <h2 class="bluesky-profile-name">${escapeHtml(first.displayName || first.authorHandle)}</h2>
         <span class="bluesky-profile-handle">@${escapeHtml(first.authorHandle)}</span>
-        <span class="bluesky-profile-count">${stubs.length} archived posts</span>
+        <span class="bluesky-profile-count">${postDirs.length} archived posts</span>
       </div>
     `;
     container.appendChild(profileHeader);
@@ -408,11 +425,13 @@ export async function renderBlueskyTimeline(
       <option value="new">Newest</option>
       <option value="old">Oldest</option>
     </select>
+    <span class="timeline-status">${escapeHtml(indexingStatus)}</span>
   `;
   container.appendChild(controls);
 
   const searchInput = controls.querySelector<HTMLInputElement>(".timeline-search")!;
   const sortSelect = controls.querySelector<HTMLSelectElement>(".timeline-sort")!;
+  const statusEl = controls.querySelector<HTMLElement>(".timeline-status")!;
 
   const timeline = document.createElement("div");
   timeline.className = "bluesky-timeline";
@@ -426,6 +445,14 @@ export async function renderBlueskyTimeline(
     while (lazyCards.length > 0) {
       lazyCards.pop()?.destroy();
     }
+  }
+
+  function updateIndexStatus(status?: string): void {
+    if (isDisposed) {
+      return;
+    }
+    indexingStatus = status ?? `Indexed ${indexedStubs.length}/${postDirs.length}`;
+    statusEl.textContent = isIndexComplete ? "" : indexingStatus;
   }
 
   function appendPostCard(post: TimelinePost, index: number): void {
@@ -453,6 +480,10 @@ export async function renderBlueskyTimeline(
   }
 
   async function renderNextBatch(): Promise<void> {
+    if (isDisposed) {
+      return;
+    }
+
     if (isLoading || renderedCount >= filtered.length) {
       return;
     }
@@ -473,6 +504,10 @@ export async function renderBlueskyTimeline(
   }
 
   async function resetAndRender(): Promise<void> {
+    if (isDisposed) {
+      return;
+    }
+
     filtered = applySortAndFilter();
     renderedCount = 0;
     isLoading = false;
@@ -487,6 +522,39 @@ export async function renderBlueskyTimeline(
     await renderNextBatch();
   }
 
+  async function ensureIndexedForCurrentFilters(): Promise<void> {
+    const needsFullIndex = Boolean(searchTerm) || sortMode === "old";
+    if (!needsFullIndex || isIndexComplete || !indexPromise) {
+      return;
+    }
+
+    updateIndexStatus("Finishing index…");
+    await indexPromise;
+    updateIndexStatus();
+  }
+
+  indexPromise = (async () => {
+    const remainingBatches = chunkArray(
+      orderedPostDirs.slice(INITIAL_INDEX_BATCH),
+      INDEX_BATCH_SIZE
+    );
+
+    for (const batch of remainingBatches) {
+      const loaded = await loadStubBatch(batch);
+      indexedStubs.push(...loaded);
+      updateIndexStatus();
+
+      if (!searchTerm && sortMode === "new") {
+        filtered = applySortAndFilter();
+        await nextFrame();
+        void renderNextBatch();
+      }
+    }
+
+    isIndexComplete = true;
+    updateIndexStatus();
+  })();
+
   scrollObserver = new IntersectionObserver(
     (entries) => {
       if (entries[0]?.isIntersecting && !isLoading && renderedCount < filtered.length) {
@@ -498,16 +566,23 @@ export async function renderBlueskyTimeline(
   scrollObserver.observe(sentinel);
 
   // Sort handler
-  const handleSortChange = () => {
+  const runSortChange = async () => {
     sortMode = sortSelect.value as "new" | "old";
-    resetAndRender();
+    await ensureIndexedForCurrentFilters();
+    await resetAndRender();
+  };
+  const handleSortChange = () => {
+    void runSortChange();
   };
   sortSelect.addEventListener("change", handleSortChange);
 
   // Search handler (debounced)
   const handleSearchInput = debounce(() => {
     searchTerm = searchInput.value.trim().toLowerCase();
-    resetAndRender();
+    void (async () => {
+      await ensureIndexedForCurrentFilters();
+      await resetAndRender();
+    })();
   }, 300);
   searchInput.addEventListener(
     "input",
@@ -518,6 +593,7 @@ export async function renderBlueskyTimeline(
   await resetAndRender();
 
   return () => {
+    isDisposed = true;
     scrollObserver?.disconnect();
     clearRenderedCards();
     sortSelect.removeEventListener("change", handleSortChange);

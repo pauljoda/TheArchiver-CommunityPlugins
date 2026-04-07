@@ -8,6 +8,7 @@ import { renderBlueskyPostDetail } from "./bluesky-post-detail";
 import { renderTwitterTimeline } from "./twitter-timeline";
 import { renderTwitterPostDetail } from "./twitter-post-detail";
 import { detectNfoPlatform } from "./nfo-parser";
+import { SocialViewCache } from "./cached-api";
 
 /** Files that are directory metadata, not post content */
 const METADATA_FILES = new Set([
@@ -146,10 +147,11 @@ export class RedditApp {
   private api: PluginViewAPI;
   private contentEl: HTMLElement;
   private viewCleanup?: ViewCleanup;
+  private readonly cache = new SocialViewCache();
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
-    this.api = api;
+    this.api = this.cache.wrap(api);
 
     this.container.innerHTML = "";
     this.container.classList.add("reddit-view");
@@ -239,13 +241,14 @@ export class RedditApp {
   }
 
   onPathChange(newPath: string, api: PluginViewAPI): void {
-    this.api = api;
+    this.api = this.cache.wrap(api);
     this.renderCurrentPath();
   }
 
   destroy(): void {
     this.viewCleanup?.();
     this.viewCleanup = undefined;
+    this.cache.clear();
     this.container.classList.remove("reddit-view");
     this.container.innerHTML = "";
   }

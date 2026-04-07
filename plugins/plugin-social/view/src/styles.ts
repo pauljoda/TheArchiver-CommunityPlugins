@@ -51,6 +51,18 @@ const CSS = `
   box-shadow: 0 0 0 1px var(--primary);
 }
 
+.reddit-card-loading {
+  opacity: 0.92;
+}
+
+.reddit-card-preview-slot {
+  width: 100%;
+}
+
+.reddit-card-loading .reddit-card-meta-item {
+  color: var(--muted-foreground);
+}
+
 .reddit-card-thumb {
   width: 100%;
   aspect-ratio: 16/10;
@@ -1136,6 +1148,15 @@ const CSS = `
   border-color: var(--primary);
 }
 
+.timeline-status {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* ── Bluesky Post Detail ── */
 .bluesky-detail {
   max-width: 600px;
@@ -1834,6 +1855,29 @@ const CSS = `
 
 .rdt-controls .timeline-search::placeholder {
   color: var(--muted-foreground);
+}
+
+.rdt-controls .rdt-sort-select {
+  appearance: none;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.rdt-controls .rdt-sort-select:hover,
+.rdt-controls .rdt-sort-select:focus {
+  border-color: var(--primary);
+  outline: none;
 }
 
 .timeline-no-results {
