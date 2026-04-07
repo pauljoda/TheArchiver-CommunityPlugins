@@ -5032,6 +5032,8 @@
       __publicField(this, "postOverlay", null);
       /** Saved scroll position from the timeline (survives clearing inlinePost) */
       __publicField(this, "savedScrollTop", 0);
+      /** The directory path the current view was rendered for */
+      __publicField(this, "currentDirPath", null);
       /** Bound popstate handler */
       __publicField(this, "popstateHandler", null);
       this.container = container;
@@ -5086,6 +5088,7 @@
       this.timelineBreadcrumb = null;
       this.contentEl.innerHTML = "";
       const { currentPath, trackedDirectory } = this.api;
+      this.currentDirPath = currentPath.replace(/\/+$/, "");
       const tracked = trackedDirectory.replace(/\/+$/, "");
       const current = currentPath.replace(/\/+$/, "");
       const isRoot = current === tracked;
@@ -5207,6 +5210,10 @@
     }
     onPathChange(newPath, api) {
       this.api = this.cache.wrap(api);
+      const newDir = newPath.replace(/\/+$/, "");
+      if (newDir === this.currentDirPath) {
+        return;
+      }
       this.inlinePost = null;
       this.timelineEl = null;
       this.timelineBreadcrumb = null;

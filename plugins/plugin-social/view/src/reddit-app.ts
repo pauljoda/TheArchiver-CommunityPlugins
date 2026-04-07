@@ -168,6 +168,8 @@ export class RedditApp {
   private postOverlay: HTMLElement | null = null;
   /** Saved scroll position from the timeline (survives clearing inlinePost) */
   private savedScrollTop = 0;
+  /** The directory path the current view was rendered for */
+  private currentDirPath: string | null = null;
   /** Bound popstate handler */
   private popstateHandler: ((e: PopStateEvent) => void) | null = null;
 
@@ -240,6 +242,7 @@ export class RedditApp {
     this.contentEl.innerHTML = "";
 
     const { currentPath, trackedDirectory } = this.api;
+    this.currentDirPath = currentPath.replace(/\/+$/, "");
     const tracked = trackedDirectory.replace(/\/+$/, "");
     const current = currentPath.replace(/\/+$/, "");
     const isRoot = current === tracked;
@@ -391,7 +394,15 @@ export class RedditApp {
 
   onPathChange(newPath: string, api: PluginViewAPI): void {
     this.api = this.cache.wrap(api);
-    // Host-driven navigation — clear any inline post state
+    const newDir = newPath.replace(/\/+$/, "");
+
+    // Same path — host is re-emitting after our pushState/back.
+    // The popstate handler already restored the view, so skip.
+    if (newDir === this.currentDirPath) {
+      return;
+    }
+
+    // Actually different path — full re-render
     this.inlinePost = null;
     this.timelineEl = null;
     this.timelineBreadcrumb = null;
