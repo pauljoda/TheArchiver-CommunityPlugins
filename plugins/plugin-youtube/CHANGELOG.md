@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Replace inline type definitions with imports from core `plugin-api.d.ts`
+
 ## 1.0.1
 
 - Adopt core helpers for `execAsync`, `shellEscape`, `xmlEscape`, `resolveOutputDir`

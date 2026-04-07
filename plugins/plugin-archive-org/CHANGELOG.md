@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Replace inline type definitions with imports from core `plugin-api.d.ts`
+
 ## 2.0.1
 
 - Refactor file downloads to use core `helpers.io.downloadFile` with custom headers and redirect support

@@ -6,99 +6,21 @@ import { promisify } from "util";
 export const execFileAsync = promisify(execFile);
 
 // =============================================================================
-// Type Definitions
+// Core Plugin Types (re-exported from plugin-api.d.ts)
 // =============================================================================
 
-// Plugin types - matches TheArchiver's plugin interface
-export interface DownloadResult {
-  success: boolean;
-  message: string;
-}
+export type {
+  DownloadResult,
+  PluginSettingsAccessor,
+  PluginLogger,
+  DownloadContext,
+  ArchiverPlugin,
+  PluginHelpers,
+} from "./plugin-api";
 
-export interface PluginSettingsAccessor {
-  get<T = string>(key: string): T;
-  set(key: string, value: string): Promise<void>;
-}
-
-export interface PluginLogger {
-  info(msg: string): void;
-  warn(msg: string): void;
-  error(msg: string): void;
-}
-
-export interface DownloadContext {
-  url: string;
-  rootDirectory: string;
-  maxDownloadThreads: number;
-  helpers: {
-    html: {
-      fetchPage(
-        url: string,
-        options?: { userAgent?: string; cookies?: string }
-      ): Promise<string>;
-    };
-    io: {
-      downloadFile(
-        url: string,
-        outputPath: string,
-        options?: Record<string, unknown>
-      ): Promise<void>;
-      downloadFiles(
-        files: Array<{ url: string; outputPath: string }>,
-        concurrency?: number,
-        options?: Record<string, unknown>
-      ): Promise<void>;
-      ensureDir(dirPath: string): Promise<void>;
-      fileExists(filePath: string): Promise<boolean>;
-    };
-    url: {
-      extractHostname(urlString: string): string;
-    };
-    string: {
-      sanitizeFilename(input: string): string;
-      xmlEscape(str: string): string;
-      truncateTitle(title: string, maxLen?: number): string;
-      filenameFromUrl(url: string): string | null;
-      getMimeExtension(mime: string): string;
-    };
-  };
-  logger: PluginLogger;
-  settings: PluginSettingsAccessor;
-}
+import type { DownloadContext } from "./plugin-api";
 
 export type StringHelpers = DownloadContext["helpers"]["string"];
-
-export interface ArchiverPlugin {
-  name: string;
-  version?: string;
-  description?: string;
-  urlPatterns: string[];
-  fileTypes?: string[];
-  settings?: Array<{
-    key: string;
-    type: string;
-    label: string;
-    description?: string;
-    required?: boolean;
-    defaultValue?: string | number | boolean;
-    hidden?: boolean;
-    validation?: {
-      min?: number;
-      max?: number;
-      pattern?: string;
-      options?: Array<{ label: string; value: string }>;
-    };
-    sortOrder?: number;
-  }>;
-  actions?: Record<
-    string,
-    (context: {
-      settings: PluginSettingsAccessor;
-      logger: PluginLogger;
-    }) => Promise<{ success: boolean; message: string }>
-  >;
-  download(context: DownloadContext): Promise<DownloadResult>;
-}
 
 // Reddit-specific types
 

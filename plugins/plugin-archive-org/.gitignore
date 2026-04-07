@@ -2,5 +2,6 @@ node_modules/
 dist/
 *.js.map
 *.d.ts
+!plugin-api.d.ts
 ArchiveOrgLogin.json
 .idea/

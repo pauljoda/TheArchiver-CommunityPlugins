@@ -1,82 +1,13 @@
 import path from "path";
-
-// Plugin types - matches TheArchiver's plugin interface
-interface DownloadResult {
-  success: boolean;
-  message: string;
-}
-
-interface PluginSettingsAccessor {
-  get<T = string>(key: string): T;
-}
-
-interface PluginLogger {
-  info(msg: string): void;
-  warn(msg: string): void;
-  error(msg: string): void;
-}
-
-interface DownloadContext {
-  url: string;
-  rootDirectory: string;
-  maxDownloadThreads: number;
-  helpers: {
-    html: {
-      fetchPage(url: string, options?: { userAgent?: string; cookies?: string }): Promise<string>;
-      parse(html: string): ReturnType<typeof import("cheerio").load>;
-    };
-    io: {
-      ensureDir(dirPath: string): Promise<void>;
-      fileExists(filePath: string): Promise<boolean>;
-      downloadFile(
-        url: string,
-        outputPath: string,
-        options?: {
-          userAgent?: string;
-          cookies?: string;
-          headers?: Record<string, string>;
-          redirect?: RequestRedirect;
-        }
-      ): Promise<void>;
-    };
-    url: {
-      extractBaseUrl(urlString: string): string;
-    };
-    string: {
-      sanitizeFilename(input: string): string;
-    };
-  };
-  logger: PluginLogger;
-  settings: PluginSettingsAccessor;
-}
-
-interface ActionContext {
-  settings: PluginSettingsAccessor;
-  logger: PluginLogger;
-}
-
-interface ActionResult {
-  success: boolean;
-  message: string;
-  settingsUpdates?: Array<{ key: string; value: string }>;
-}
-
-interface ArchiverPlugin {
-  name: string;
-  version: string;
-  description: string;
-  urlPatterns: string[];
-  settings: Array<{
-    key: string;
-    type: string;
-    label: string;
-    description: string;
-    required: boolean;
-    sortOrder?: number;
-  }>;
-  actions?: Record<string, (context: ActionContext) => Promise<ActionResult>>;
-  download(context: DownloadContext): Promise<DownloadResult>;
-}
+import type {
+  DownloadResult,
+  PluginSettingsAccessor,
+  PluginLogger,
+  DownloadContext,
+  ActionContext,
+  ActionResult,
+  ArchiverPlugin,
+} from "./plugin-api";
 
 interface Credentials {
   access_key: string;

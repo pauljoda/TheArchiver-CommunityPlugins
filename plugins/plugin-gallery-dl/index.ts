@@ -3,91 +3,15 @@ import fs from "fs";
 import { exec } from "child_process";
 import { urlPatterns } from "./sites";
 import { pluginSettings } from "./settings";
-
-// Types inlined to avoid dependency on TheArchiver source at compile time
-interface DownloadResult {
-  success: boolean;
-  message: string;
-}
-
-interface PluginSettingsAccessor {
-  get<T = string>(key: string): T;
-  set(key: string, value: string): Promise<void>;
-}
-
-interface PluginHelpers {
-  html: unknown;
-  io: {
-    ensureDir: (path: string) => Promise<void>;
-    fileExists: (path: string) => Promise<boolean>;
-    downloadFile: (url: string, outputPath: string, options?: unknown) => Promise<void>;
-    downloadFiles: (files: Array<{ url: string; outputPath: string }>, concurrency?: number, options?: unknown) => Promise<void>;
-    createZip: (sourceDir: string, outputPath: string) => Promise<void>;
-    listFiles: (dirPath: string, pattern?: RegExp) => Promise<string[]>;
-    moveFile: (src: string, dest: string) => Promise<void>;
-  };
-  process: {
-    execAsync: (cmd: string, options?: { maxBuffer?: number; timeout?: number }) => Promise<{ stdout: string; stderr: string }>;
-  };
-  url: {
-    resolveOutputDir: (
-      url: string,
-      rootDir: string,
-      defaultFolder: string,
-      siteDirectoriesJson: string,
-      logger: PluginLogger,
-      opts?: unknown
-    ) => string;
-  };
-  string: {
-    sanitizeFilename: (input: string) => string;
-    slugify: (input: string) => string;
-    padNumber: (num: number, length: number) => string;
-    removeNumbersAndSpaces: (input: string) => string;
-    shellEscape: (arg: string) => string;
-    xmlEscape: (str: string) => string;
-    truncateTitle: (title: string, maxLen: number) => string;
-    filenameFromUrl: (url: string) => string | null;
-    getMimeExtension: (mime: string) => string;
-  };
-}
-
-interface PluginLogger {
-  info: (msg: string) => void;
-  warn: (msg: string) => void;
-  error: (msg: string) => void;
-}
-
-interface DownloadContext {
-  url: string;
-  rootDirectory: string;
-  maxDownloadThreads: number;
-  helpers: PluginHelpers;
-  logger: PluginLogger;
-  settings: PluginSettingsAccessor;
-}
-
-interface ActionContext {
-  settings: PluginSettingsAccessor;
-  logger: PluginLogger;
-}
-
-interface ActionResult {
-  success: boolean;
-  message: string;
-  settingsUpdates?: Array<{ key: string; value: string }>;
-}
-
-interface ArchiverPlugin {
-  name: string;
-  version?: string;
-  description?: string;
-  author?: string;
-  urlPatterns: string[];
-  settings?: unknown[];
-  actions?: Record<string, (context: ActionContext) => Promise<ActionResult>>;
-  download: (context: DownloadContext) => Promise<DownloadResult>;
-}
+import type {
+  DownloadResult,
+  PluginSettingsAccessor,
+  PluginLogger,
+  DownloadContext,
+  ActionContext,
+  ActionResult,
+  ArchiverPlugin,
+} from "./plugin-api";
 
 function definePlugin(plugin: ArchiverPlugin): ArchiverPlugin {
   return plugin;
