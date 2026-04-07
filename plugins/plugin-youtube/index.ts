@@ -419,6 +419,9 @@ const plugin = definePlugin({
     // Write info json for metadata reference
     args.push("--write-info-json");
 
+    // Write comments to info json
+    args.push("--write-comments");
+
     // Replace filesystem-illegal characters (Windows compat) while keeping Unicode titles
     args.push("--windows-filenames");
 

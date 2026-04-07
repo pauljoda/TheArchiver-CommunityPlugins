@@ -11,6 +11,7 @@ import {
   formatCount,
 } from "./info-parser";
 import { initTrickplay, destroyTrickplay } from "./trickplay";
+import { renderComments } from "./comments-view";
 
 /** Active HLS instance for cleanup */
 let activeHls: Hls | null = null;
@@ -330,6 +331,11 @@ async function renderVideoDetail(
     }
 
     layout.appendChild(catsContainer);
+  }
+
+  // ── Comments ──
+  if (info?.comments && info.comments.length > 0) {
+    renderComments(layout, info.comments, info.comment_count);
   }
 
   container.appendChild(layout);

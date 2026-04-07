@@ -28,6 +28,23 @@ export interface PluginViewRegistration {
   onPathChange?: (newPath: string, api: PluginViewAPI) => void;
 }
 
+/** A comment from yt-dlp's --write-comments output (embedded in .info.json) */
+export interface YtDlpComment {
+  id: string;
+  text: string;
+  timestamp?: number;
+  like_count?: number;
+  dislike_count?: number;
+  reply_count?: number;
+  author: string;
+  author_id?: string;
+  author_url?: string;
+  /** "root" for top-level comments, otherwise parent comment ID */
+  parent: string;
+  is_favorited?: boolean;
+  author_is_uploader?: boolean;
+}
+
 /** Parsed yt-dlp .info.json metadata */
 export interface YtDlpInfo {
   id: string;
@@ -58,6 +75,8 @@ export interface YtDlpInfo {
   format?: string;
   webpage_url?: string;
   channel_follower_count?: number;
+  comments?: YtDlpComment[];
+  comment_count?: number;
 }
 
 /** Video entry for channel/playlist view */

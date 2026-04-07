@@ -415,6 +415,178 @@
   font-size: 0.875rem;
 }
 
+/* \u2500\u2500 Comments \u2500\u2500 */
+.yt-comments-section {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.yt-comments-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.yt-comments-heading {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.yt-sort-bar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  padding: 0.1875rem;
+}
+
+.yt-sort-btn {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3125rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.yt-sort-btn:hover {
+  color: var(--foreground);
+}
+
+.yt-sort-btn.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.yt-comments-empty {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  padding: 1rem 0;
+}
+
+.yt-comment {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.yt-comment:last-child {
+  border-bottom: none;
+}
+
+.yt-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.yt-comment-author {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.yt-comment-uploader {
+  color: var(--primary);
+}
+
+.yt-comment-badge {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.yt-comment-badge-heart {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.yt-comment-date {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.yt-comment-body {
+  font-size: 0.875rem;
+  color: var(--foreground);
+  line-height: 1.6;
+  word-break: break-word;
+  margin-bottom: 0.375rem;
+}
+
+.yt-comment-likes {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* \u2500\u2500 Collapse toggle \u2500\u2500 */
+.yt-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.yt-comment-toggle:hover {
+  color: var(--foreground);
+}
+
+.yt-comment-toggle-icon {
+  display: inline-block;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.yt-comment-toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.yt-comment-toggle-text {
+  font-weight: 500;
+}
+
+/* \u2500\u2500 Threaded replies \u2500\u2500 */
+.yt-comment-replies {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--thread-color, var(--border));
+  cursor: default;
+  transition: border-color 0.15s;
+}
+
+.yt-comment-replies:hover {
+  border-left-color: color-mix(in oklch, var(--thread-color, var(--border)), var(--foreground) 25%);
+}
+
+.yt-comment-replies.collapsed {
+  display: none;
+}
+
+.yt-comment-replies .yt-comment {
+  padding: 0.5rem 0;
+}
+
 /* \u2500\u2500 Source link \u2500\u2500 */
 .yt-source-link {
   display: inline-flex;
@@ -33827,6 +33999,198 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     trickplayAvailable = false;
   }
 
+  // view/src/comments-view.ts
+  var DEPTH_COLORS = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)"
+  ];
+  function depthColor(depth) {
+    return DEPTH_COLORS[depth % DEPTH_COLORS.length];
+  }
+  function formatTimestamp(ts) {
+    if (!ts) return "";
+    try {
+      return new Date(ts * 1e3).toLocaleDateString(void 0, {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+    } catch {
+      return "";
+    }
+  }
+  function formatLikes(count) {
+    if (count === void 0 || count <= 0) return "";
+    if (count >= 1e6) return (count / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+    if (count >= 1e3) return (count / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+    return String(count);
+  }
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  function sortComments(comments, mode) {
+    const sorted = [...comments];
+    if (mode === "top") {
+      sorted.sort((a, b) => (b.like_count ?? 0) - (a.like_count ?? 0));
+    } else {
+      sorted.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+    }
+    return sorted;
+  }
+  function countAllReplies(commentId, allById) {
+    const direct = allById.get(commentId) ?? [];
+    let count = direct.length;
+    for (const r of direct) {
+      count += countAllReplies(r.id, allById);
+    }
+    return count;
+  }
+  function renderComment(comment, replies, allById, depth, startCollapsed) {
+    const el = document.createElement("div");
+    el.className = "yt-comment";
+    const header = document.createElement("div");
+    header.className = "yt-comment-header";
+    const author = document.createElement("span");
+    author.className = comment.author_is_uploader ? "yt-comment-author yt-comment-uploader" : "yt-comment-author";
+    author.textContent = comment.author || "Anonymous";
+    header.appendChild(author);
+    if (comment.author_is_uploader) {
+      const badge = document.createElement("span");
+      badge.className = "yt-comment-badge";
+      badge.textContent = "Creator";
+      header.appendChild(badge);
+    }
+    if (comment.is_favorited) {
+      const badge = document.createElement("span");
+      badge.className = "yt-comment-badge yt-comment-badge-heart";
+      badge.textContent = "\u2665 Liked by creator";
+      header.appendChild(badge);
+    }
+    const date = formatTimestamp(comment.timestamp);
+    if (date) {
+      const dateEl = document.createElement("span");
+      dateEl.className = "yt-comment-date";
+      dateEl.textContent = date;
+      header.appendChild(dateEl);
+    }
+    el.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "yt-comment-body";
+    body.innerHTML = escapeHtml(comment.text || "").replace(/\n/g, "<br>");
+    el.appendChild(body);
+    const likes = formatLikes(comment.like_count);
+    if (likes) {
+      const likesEl = document.createElement("div");
+      likesEl.className = "yt-comment-likes";
+      likesEl.textContent = `\u{1F44D} ${likes}`;
+      el.appendChild(likesEl);
+    }
+    if (replies.length > 0) {
+      const totalReplies = countAllReplies(comment.id, allById);
+      const collapsed = startCollapsed;
+      const toggle = document.createElement("button");
+      toggle.className = "yt-comment-toggle";
+      toggle.innerHTML = `<span class="yt-comment-toggle-icon ${collapsed ? "" : "expanded"}">\u25B6</span> <span class="yt-comment-toggle-text">${totalReplies} ${totalReplies === 1 ? "reply" : "replies"}</span>`;
+      el.appendChild(toggle);
+      const repliesEl = document.createElement("div");
+      repliesEl.className = "yt-comment-replies";
+      repliesEl.style.setProperty("--thread-color", depthColor(depth));
+      if (collapsed) repliesEl.classList.add("collapsed");
+      for (const reply of replies) {
+        const replyReplies = allById.get(reply.id) ?? [];
+        repliesEl.appendChild(renderComment(reply, replyReplies, allById, depth + 1, false));
+      }
+      el.appendChild(repliesEl);
+      const threadLine = repliesEl;
+      toggle.addEventListener("click", () => {
+        const isCollapsed = repliesEl.classList.toggle("collapsed");
+        const icon = toggle.querySelector(".yt-comment-toggle-icon");
+        icon.classList.toggle("expanded", !isCollapsed);
+      });
+      repliesEl.addEventListener("click", (e) => {
+        const target = e.target;
+        const rect = repliesEl.getBoundingClientRect();
+        if (e.clientX < rect.left + 16) {
+          e.stopPropagation();
+          const isCollapsed = repliesEl.classList.toggle("collapsed");
+          const icon = toggle.querySelector(".yt-comment-toggle-icon");
+          icon.classList.toggle("expanded", !isCollapsed);
+        }
+      });
+    }
+    return el;
+  }
+  function renderComments(container, comments, totalCount) {
+    const byParent = /* @__PURE__ */ new Map();
+    for (const c of comments) {
+      const key = c.parent === "root" ? "root" : c.parent;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(c);
+    }
+    const byId = /* @__PURE__ */ new Map();
+    for (const c of comments) {
+      byId.set(c.id, byParent.get(c.id) ?? []);
+    }
+    const topLevel = byParent.get("root") ?? [];
+    const section = document.createElement("div");
+    section.className = "yt-comments-section";
+    const headerRow = document.createElement("div");
+    headerRow.className = "yt-comments-header-row";
+    const heading = document.createElement("div");
+    heading.className = "yt-comments-heading";
+    const displayCount = totalCount ?? comments.length;
+    heading.textContent = `Comments (${displayCount.toLocaleString()})`;
+    headerRow.appendChild(heading);
+    const commentsList = document.createElement("div");
+    commentsList.className = "yt-comments-list";
+    if (topLevel.length > 0) {
+      const sortBar = document.createElement("div");
+      sortBar.className = "yt-sort-bar";
+      const topBtn = document.createElement("button");
+      topBtn.className = "yt-sort-btn active";
+      topBtn.textContent = "Top";
+      const newestBtn = document.createElement("button");
+      newestBtn.className = "yt-sort-btn";
+      newestBtn.textContent = "Newest";
+      const renderList = (mode) => {
+        commentsList.innerHTML = "";
+        const sorted = sortComments(topLevel, mode);
+        for (const comment of sorted) {
+          const replies = byId.get(comment.id) ?? [];
+          commentsList.appendChild(renderComment(comment, replies, byId, 0, replies.length > 0));
+        }
+      };
+      topBtn.addEventListener("click", () => {
+        topBtn.classList.add("active");
+        newestBtn.classList.remove("active");
+        renderList("top");
+      });
+      newestBtn.addEventListener("click", () => {
+        newestBtn.classList.add("active");
+        topBtn.classList.remove("active");
+        renderList("newest");
+      });
+      sortBar.appendChild(topBtn);
+      sortBar.appendChild(newestBtn);
+      headerRow.appendChild(sortBar);
+      section.appendChild(headerRow);
+      renderList("top");
+      section.appendChild(commentsList);
+    } else {
+      section.appendChild(headerRow);
+      const empty = document.createElement("div");
+      empty.className = "yt-comments-empty";
+      empty.textContent = "No comments";
+      section.appendChild(empty);
+    }
+    container.appendChild(section);
+  }
+
   // view/src/video-view.ts
   var activeHls = null;
   var activeSessionId = null;
@@ -34048,6 +34412,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         catsContainer.appendChild(catEl);
       }
       layout.appendChild(catsContainer);
+    }
+    if (info?.comments && info.comments.length > 0) {
+      renderComments(layout, info.comments, info.comment_count);
     }
     container.appendChild(layout);
     const previewUrl = `/api/files/preview?path=${encodeURIComponent(videoFilePath)}`;

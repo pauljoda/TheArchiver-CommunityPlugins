@@ -284,6 +284,15 @@
   margin-top: 1.5rem;
 }
 
+.reddit-comments-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .reddit-comments-heading {
   font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
   font-size: 0.8125rem;
@@ -291,9 +300,37 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted-foreground);
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
+}
+
+.reddit-sort-bar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  padding: 0.1875rem;
+}
+
+.reddit-sort-btn {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3125rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.reddit-sort-btn:hover {
+  color: var(--foreground);
+}
+
+.reddit-sort-btn.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
 .reddit-comment {
@@ -302,10 +339,56 @@
   margin-bottom: 0.75rem;
 }
 
+/* \u2500\u2500 Collapse toggle \u2500\u2500 */
+.reddit-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.reddit-comment-toggle:hover {
+  color: var(--foreground);
+}
+
+.reddit-comment-toggle-icon {
+  display: inline-block;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.reddit-comment-toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.reddit-comment-toggle-text {
+  font-weight: 500;
+}
+
+/* \u2500\u2500 Threaded replies \u2500\u2500 */
 .reddit-comment-thread {
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--thread-color, var(--border));
   padding-left: 1rem;
   margin-left: 0.5rem;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+
+.reddit-comment-thread:hover {
+  border-left-color: color-mix(in oklch, var(--thread-color, var(--border)), var(--foreground) 25%);
+}
+
+.reddit-comment-thread.collapsed {
+  display: none;
 }
 
 .reddit-comment-header {
@@ -2780,6 +2863,16 @@
   }
 
   // view/src/comment-tree.ts
+  var DEPTH_COLORS = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)"
+  ];
+  function depthColor(depth) {
+    return DEPTH_COLORS[depth % DEPTH_COLORS.length];
+  }
   function formatDate(utc) {
     if (!utc || utc <= 0) return "";
     try {
@@ -2793,20 +2886,14 @@
       return "";
     }
   }
-  function escapeHtml4(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-  }
-  function renderCommentMedia(body, media, postPath) {
+  function buildCommentMedia(body, media, postPath) {
     if (!media || Object.keys(media).length === 0) {
-      return { cleanBody: body, mediaHtml: "" };
+      return { cleanBody: body, mediaEls: [] };
     }
     let cleanBody = body;
-    const mediaImages = [];
+    const mediaEls = [];
     for (const [key, filename] of Object.entries(media)) {
       const src = `/api/files/download?path=${encodeURIComponent(postPath + "/comment_media/" + filename)}`;
-      mediaImages.push(src);
       if (key.startsWith("giphy:")) {
         const giphyId = key.replace("giphy:", "");
         const pattern = new RegExp(`!\\[gif\\]\\(giphy\\|${giphyId}(?:\\|[^)]+)?\\)`, "g");
@@ -2817,47 +2904,126 @@
         const pattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
         cleanBody = cleanBody.replace(pattern, "").trim();
       }
+      const img = document.createElement("img");
+      img.className = "reddit-comment-media-img";
+      img.src = src;
+      img.alt = "";
+      img.loading = "lazy";
+      mediaEls.push(img);
     }
-    let mediaHtml = "";
-    if (mediaImages.length > 0) {
-      mediaHtml = `<div class="reddit-comment-media">`;
-      for (const src of mediaImages) {
-        mediaHtml += `<img class="reddit-comment-media-img" src="${src}" alt="" loading="lazy" />`;
-      }
-      mediaHtml += `</div>`;
-    }
-    return { cleanBody, mediaHtml };
+    return { cleanBody, mediaEls };
   }
-  function renderComment(comment, postPath) {
+  function sortComments(comments, mode) {
+    const sorted = [...comments];
+    if (mode === "top") {
+      sorted.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    } else {
+      sorted.sort((a, b) => (b.created_utc ?? 0) - (a.created_utc ?? 0));
+    }
+    return sorted;
+  }
+  function countAllReplies(comment) {
+    if (!comment.replies) return 0;
+    let count = comment.replies.length;
+    for (const r of comment.replies) {
+      count += countAllReplies(r);
+    }
+    return count;
+  }
+  function renderComment(comment, postPath, depth, startCollapsed) {
     if (comment.kind === "more") {
       const more = comment;
-      return `<div class="reddit-comment" style="opacity:0.5;font-size:0.75rem;color:var(--muted-foreground);">
-      ${more.count} more replies...
-    </div>`;
+      const stub = document.createElement("div");
+      stub.className = "reddit-comment";
+      stub.style.opacity = "0.5";
+      stub.style.fontSize = "0.75rem";
+      stub.style.color = "var(--muted-foreground)";
+      stub.textContent = `${more.count} more replies...`;
+      return stub;
+    }
+    const el = document.createElement("div");
+    el.className = "reddit-comment";
+    const header = document.createElement("div");
+    header.className = "reddit-comment-header";
+    const authorEl = document.createElement("span");
+    authorEl.className = comment.is_submitter ? "reddit-comment-author reddit-comment-op" : "reddit-comment-author";
+    authorEl.textContent = comment.author;
+    header.appendChild(authorEl);
+    if (comment.is_submitter) {
+      const badge = document.createElement("span");
+      badge.className = "reddit-op-badge";
+      badge.textContent = "OP";
+      header.appendChild(badge);
+    }
+    if (comment.distinguished === "moderator") {
+      const badge = document.createElement("span");
+      badge.className = "reddit-mod-badge";
+      badge.textContent = "MOD";
+      header.appendChild(badge);
+    }
+    if (comment.stickied) {
+      const badge = document.createElement("span");
+      badge.className = "reddit-mod-badge";
+      badge.textContent = "\u{1F4CC}";
+      header.appendChild(badge);
     }
     const scoreClass = comment.score > 0 ? "reddit-score-up" : comment.score < 0 ? "reddit-score-down" : "reddit-score-neutral";
-    const { cleanBody, mediaHtml } = renderCommentMedia(comment.body, comment.media, postPath);
-    const bodyHtml = renderMarkdown(cleanBody);
-    const authorClass = comment.is_submitter ? "reddit-comment-author reddit-comment-op" : "reddit-comment-author";
-    const opBadge = comment.is_submitter ? ` <span class="reddit-op-badge">OP</span>` : "";
-    const stickyBadge = comment.stickied ? ` <span class="reddit-mod-badge">\u{1F4CC}</span>` : "";
-    const modBadge = comment.distinguished === "moderator" ? ` <span class="reddit-mod-badge">MOD</span>` : "";
+    const scoreEl = document.createElement("span");
+    scoreEl.className = `reddit-score ${scoreClass}`;
+    scoreEl.textContent = `${comment.score > 0 ? "+" : ""}${comment.score}`;
+    header.appendChild(scoreEl);
     const dateStr = formatDate(comment.created_utc);
-    const repliesHtml = comment.replies && comment.replies.length > 0 ? `<div class="reddit-comment-thread">
-          ${comment.replies.map((r) => renderComment(r, postPath)).join("")}
-        </div>` : "";
-    return `
-    <div class="reddit-comment">
-      <div class="reddit-comment-header">
-        <span class="${authorClass}">${escapeHtml4(comment.author)}</span>${opBadge}${modBadge}${stickyBadge}
-        <span class="reddit-score ${scoreClass}">${comment.score > 0 ? "+" : ""}${comment.score}</span>
-        ${dateStr ? `<span class="reddit-comment-date">${dateStr}</span>` : ""}
-      </div>
-      <div class="reddit-comment-body">${bodyHtml}</div>
-      ${mediaHtml}
-      ${repliesHtml}
-    </div>
-  `;
+    if (dateStr) {
+      const dateEl = document.createElement("span");
+      dateEl.className = "reddit-comment-date";
+      dateEl.textContent = dateStr;
+      header.appendChild(dateEl);
+    }
+    el.appendChild(header);
+    const { cleanBody, mediaEls } = buildCommentMedia(comment.body, comment.media, postPath);
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "reddit-comment-body";
+    bodyEl.innerHTML = renderMarkdown(cleanBody);
+    el.appendChild(bodyEl);
+    if (mediaEls.length > 0) {
+      const mediaContainer = document.createElement("div");
+      mediaContainer.className = "reddit-comment-media";
+      for (const img of mediaEls) {
+        mediaContainer.appendChild(img);
+      }
+      el.appendChild(mediaContainer);
+    }
+    if (comment.replies && comment.replies.length > 0) {
+      const totalReplies = countAllReplies(comment);
+      const collapsed = startCollapsed;
+      const toggle = document.createElement("button");
+      toggle.className = "reddit-comment-toggle";
+      toggle.innerHTML = `<span class="reddit-comment-toggle-icon ${collapsed ? "" : "expanded"}">\u25B6</span> <span class="reddit-comment-toggle-text">${totalReplies} ${totalReplies === 1 ? "reply" : "replies"}</span>`;
+      el.appendChild(toggle);
+      const thread = document.createElement("div");
+      thread.className = "reddit-comment-thread";
+      thread.style.setProperty("--thread-color", depthColor(depth));
+      if (collapsed) thread.classList.add("collapsed");
+      for (const reply of comment.replies) {
+        thread.appendChild(renderComment(reply, postPath, depth + 1, false));
+      }
+      el.appendChild(thread);
+      toggle.addEventListener("click", () => {
+        const isCollapsed = thread.classList.toggle("collapsed");
+        const icon = toggle.querySelector(".reddit-comment-toggle-icon");
+        icon.classList.toggle("expanded", !isCollapsed);
+      });
+      thread.addEventListener("click", (e) => {
+        const rect = thread.getBoundingClientRect();
+        if (e.clientX < rect.left + 16) {
+          e.stopPropagation();
+          const isCollapsed = thread.classList.toggle("collapsed");
+          const icon = toggle.querySelector(".reddit-comment-toggle-icon");
+          icon.classList.toggle("expanded", !isCollapsed);
+        }
+      });
+    }
+    return el;
   }
   function renderCommentTree(container, comments, postPath) {
     if (comments.length === 0) {
@@ -2869,16 +3035,54 @@
     `;
       return;
     }
-    container.innerHTML = `
-    <div class="reddit-comments">
-      <div class="reddit-comments-heading">Comments (${comments.length})</div>
-      ${comments.map((c) => renderComment(c, postPath)).join("")}
-    </div>
-  `;
+    const section = document.createElement("div");
+    section.className = "reddit-comments";
+    const headerRow = document.createElement("div");
+    headerRow.className = "reddit-comments-header-row";
+    const heading = document.createElement("div");
+    heading.className = "reddit-comments-heading";
+    heading.textContent = `Comments (${comments.length})`;
+    headerRow.appendChild(heading);
+    const sortBar = document.createElement("div");
+    sortBar.className = "reddit-sort-bar";
+    const topBtn = document.createElement("button");
+    topBtn.className = "reddit-sort-btn active";
+    topBtn.textContent = "Top";
+    const newestBtn = document.createElement("button");
+    newestBtn.className = "reddit-sort-btn";
+    newestBtn.textContent = "Newest";
+    sortBar.appendChild(topBtn);
+    sortBar.appendChild(newestBtn);
+    headerRow.appendChild(sortBar);
+    section.appendChild(headerRow);
+    const commentsList = document.createElement("div");
+    commentsList.className = "reddit-comments-list";
+    section.appendChild(commentsList);
+    const renderList = (mode) => {
+      commentsList.innerHTML = "";
+      const sorted = sortComments(comments, mode);
+      for (const c of sorted) {
+        const hasReplies = !!(c.replies && c.replies.length > 0);
+        commentsList.appendChild(renderComment(c, postPath, 0, hasReplies));
+      }
+    };
+    topBtn.addEventListener("click", () => {
+      topBtn.classList.add("active");
+      newestBtn.classList.remove("active");
+      renderList("top");
+    });
+    newestBtn.addEventListener("click", () => {
+      newestBtn.classList.add("active");
+      topBtn.classList.remove("active");
+      renderList("newest");
+    });
+    renderList("top");
+    container.innerHTML = "";
+    container.appendChild(section);
   }
 
   // view/src/post-detail.ts
-  function escapeHtml5(text) {
+  function escapeHtml4(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -2921,7 +3125,7 @@
       overlay.innerHTML = `
       <button class="reddit-lightbox-close" aria-label="Close">&times;</button>
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
-      <img src="${images[currentIndex].src}" alt="${escapeHtml5(images[currentIndex].name)}" />
+      <img src="${images[currentIndex].src}" alt="${escapeHtml4(images[currentIndex].name)}" />
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
       ${images.length > 1 ? `<div class="reddit-lightbox-counter">${currentIndex + 1} / ${images.length}</div>` : ""}
     `;
@@ -2973,17 +3177,17 @@
     const scoreClass = metadata ? metadata.score > 0 ? "reddit-score-up" : metadata.score < 0 ? "reddit-score-down" : "reddit-score-neutral" : "reddit-score-neutral";
     let headerHtml = `
     <div class="reddit-post-header">
-      <h1 class="reddit-post-title">${escapeHtml5(title)}</h1>
+      <h1 class="reddit-post-title">${escapeHtml4(title)}</h1>
       <div class="reddit-post-byline">
   `;
     if (metadata) {
-      headerHtml += `<span class="reddit-post-author">u/${escapeHtml5(metadata.author)}</span>`;
+      headerHtml += `<span class="reddit-post-author">u/${escapeHtml4(metadata.author)}</span>`;
       if (metadata.subreddit) {
-        headerHtml += `<span class="reddit-card-meta-item">r/${escapeHtml5(metadata.subreddit)}</span>`;
+        headerHtml += `<span class="reddit-card-meta-item">r/${escapeHtml4(metadata.subreddit)}</span>`;
       }
       headerHtml += `<span class="reddit-score ${scoreClass}">${metadata.score > 0 ? "+" : ""}${metadata.score.toLocaleString()}</span>`;
       if (metadata.flair) {
-        headerHtml += `<span class="reddit-flair">${escapeHtml5(metadata.flair)}</span>`;
+        headerHtml += `<span class="reddit-flair">${escapeHtml4(metadata.flair)}</span>`;
       }
       if (metadata.created) {
         headerHtml += `<span>${formatDate2(metadata.created)}</span>`;
@@ -2993,7 +3197,7 @@
       }
     }
     if (metadata?.url) {
-      headerHtml += `<a class="social-open-original" href="${escapeHtml5(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post">
+      headerHtml += `<a class="social-open-original" href="${escapeHtml4(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       Original
     </a>`;
@@ -3010,7 +3214,7 @@
       );
       galleryHtml = `<div class="reddit-gallery">`;
       images.forEach((img, i) => {
-        galleryHtml += `<img class="reddit-gallery-img" data-index="${i}" src="${imageItems[i]}" alt="${escapeHtml5(img.name)}" loading="lazy" />`;
+        galleryHtml += `<img class="reddit-gallery-img" data-index="${i}" src="${imageItems[i]}" alt="${escapeHtml4(img.name)}" loading="lazy" />`;
       });
       galleryHtml += `</div>`;
     }
@@ -3032,11 +3236,11 @@
     if (isLinkPost && metadata?.mediaUrl) {
       const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(metadata.domain)}&sz=64`;
       linkCardHtml = `
-      <a class="reddit-link-card" href="${escapeHtml5(metadata.mediaUrl)}" target="_blank" rel="noopener noreferrer">
+      <a class="reddit-link-card" href="${escapeHtml4(metadata.mediaUrl)}" target="_blank" rel="noopener noreferrer">
         <img class="reddit-link-favicon" src="${faviconUrl}" alt="" />
         <div class="reddit-link-info">
-          <div class="reddit-link-domain">${escapeHtml5(metadata.domain)}</div>
-          <div class="reddit-link-url">${escapeHtml5(metadata.mediaUrl)}</div>
+          <div class="reddit-link-domain">${escapeHtml4(metadata.domain)}</div>
+          <div class="reddit-link-url">${escapeHtml4(metadata.mediaUrl)}</div>
         </div>
         <span class="reddit-link-external">\u2197</span>
       </a>
@@ -3093,7 +3297,7 @@
     }
     return text.length;
   }
-  function escapeHtml6(text) {
+  function escapeHtml5(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -3102,7 +3306,7 @@
     const container = document.createElement("div");
     container.className = "bluesky-post-text";
     if (!facets || facets.length === 0) {
-      container.innerHTML = escapeHtml6(text).replace(/\n/g, "<br>");
+      container.innerHTML = escapeHtml5(text).replace(/\n/g, "<br>");
       return container;
     }
     const sorted = [...facets].sort((a, b) => a.byteStart - b.byteStart);
@@ -3115,16 +3319,16 @@
     let lastIndex = 0;
     for (const facet of charFacets) {
       if (facet.charStart > lastIndex) {
-        html += escapeHtml6(text.slice(lastIndex, facet.charStart)).replace(
+        html += escapeHtml5(text.slice(lastIndex, facet.charStart)).replace(
           /\n/g,
           "<br>"
         );
       }
-      const facetText = escapeHtml6(text.slice(facet.charStart, facet.charEnd));
+      const facetText = escapeHtml5(text.slice(facet.charStart, facet.charEnd));
       if (facet.type === "link" && facet.uri) {
-        html += `<a href="${escapeHtml6(facet.uri)}" target="_blank" rel="noopener noreferrer" class="bluesky-link">${facetText}</a>`;
+        html += `<a href="${escapeHtml5(facet.uri)}" target="_blank" rel="noopener noreferrer" class="bluesky-link">${facetText}</a>`;
       } else if (facet.type === "mention" && facet.did) {
-        html += `<a href="https://bsky.app/profile/${escapeHtml6(facet.did)}" target="_blank" rel="noopener noreferrer" class="bluesky-mention">${facetText}</a>`;
+        html += `<a href="https://bsky.app/profile/${escapeHtml5(facet.did)}" target="_blank" rel="noopener noreferrer" class="bluesky-mention">${facetText}</a>`;
       } else if (facet.type === "tag" && facet.tag) {
         html += `<span class="bluesky-hashtag">${facetText}</span>`;
       } else {
@@ -3133,14 +3337,14 @@
       lastIndex = facet.charEnd;
     }
     if (lastIndex < text.length) {
-      html += escapeHtml6(text.slice(lastIndex)).replace(/\n/g, "<br>");
+      html += escapeHtml5(text.slice(lastIndex)).replace(/\n/g, "<br>");
     }
     container.innerHTML = html;
     return container;
   }
 
   // view/src/bluesky-timeline.ts
-  function escapeHtml7(text) {
+  function escapeHtml6(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -3189,7 +3393,7 @@
       overlay.innerHTML = `
       <button class="reddit-lightbox-close" aria-label="Close">&times;</button>
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
-      <img src="${images[currentIndex].src}" alt="${escapeHtml7(images[currentIndex].name)}" />
+      <img src="${images[currentIndex].src}" alt="${escapeHtml6(images[currentIndex].name)}" />
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
       ${images.length > 1 ? `<div class="reddit-lightbox-counter">${currentIndex + 1} / ${images.length}</div>` : ""}
     `;
@@ -3237,7 +3441,7 @@
     header.className = "bluesky-post-header";
     let avatarHtml = "";
     if (avatarUrl) {
-      avatarHtml = `<img class="bluesky-avatar" src="${escapeHtml7(avatarUrl)}" alt="" />`;
+      avatarHtml = `<img class="bluesky-avatar" src="${escapeHtml6(avatarUrl)}" alt="" />`;
     } else {
       avatarHtml = `<div class="bluesky-avatar bluesky-avatar-placeholder"></div>`;
     }
@@ -3245,8 +3449,8 @@
     header.innerHTML = `
     ${avatarHtml}
     <div class="bluesky-post-author-info">
-      <span class="bluesky-display-name">${escapeHtml7(displayName)}</span>
-      <span class="bluesky-handle">@${escapeHtml7(meta.authorHandle)}</span>
+      <span class="bluesky-display-name">${escapeHtml6(displayName)}</span>
+      <span class="bluesky-handle">@${escapeHtml6(meta.authorHandle)}</span>
     </div>
     <span class="bluesky-timestamp">${formatRelativeTime2(meta.created)}</span>
   `;
@@ -3300,7 +3504,7 @@
         const thumbSrc = `/api/files/download?path=${encodeURIComponent(post.thumbnailFile.path)}`;
         thumbHtml = `<img class="bluesky-external-thumb" src="${thumbSrc}" alt="" />`;
       } else if (meta.externalLink.thumb) {
-        thumbHtml = `<img class="bluesky-external-thumb" src="${escapeHtml7(meta.externalLink.thumb)}" alt="" />`;
+        thumbHtml = `<img class="bluesky-external-thumb" src="${escapeHtml6(meta.externalLink.thumb)}" alt="" />`;
       }
       let domain = "";
       try {
@@ -3311,9 +3515,9 @@
       linkCard.innerHTML = `
       ${thumbHtml}
       <div class="bluesky-external-info">
-        <span class="bluesky-external-domain">${escapeHtml7(domain)}</span>
-        <span class="bluesky-external-title">${escapeHtml7(meta.externalLink.title)}</span>
-        ${meta.externalLink.description ? `<span class="bluesky-external-desc">${escapeHtml7(meta.externalLink.description)}</span>` : ""}
+        <span class="bluesky-external-domain">${escapeHtml6(domain)}</span>
+        <span class="bluesky-external-title">${escapeHtml6(meta.externalLink.title)}</span>
+        ${meta.externalLink.description ? `<span class="bluesky-external-desc">${escapeHtml6(meta.externalLink.description)}</span>` : ""}
       </div>
     `;
       card.appendChild(linkCard);
@@ -3324,10 +3528,10 @@
       const quoteDisplayName = meta.quotePost.displayName || meta.quotePost.authorHandle;
       quoteCard.innerHTML = `
       <div class="bluesky-quote-header">
-        <span class="bluesky-display-name">${escapeHtml7(quoteDisplayName)}</span>
-        <span class="bluesky-handle">@${escapeHtml7(meta.quotePost.authorHandle)}</span>
+        <span class="bluesky-display-name">${escapeHtml6(quoteDisplayName)}</span>
+        <span class="bluesky-handle">@${escapeHtml6(meta.quotePost.authorHandle)}</span>
       </div>
-      <div class="bluesky-quote-text">${escapeHtml7(meta.quotePost.text).replace(/\n/g, "<br>")}</div>
+      <div class="bluesky-quote-text">${escapeHtml6(meta.quotePost.text).replace(/\n/g, "<br>")}</div>
     `;
       card.appendChild(quoteCard);
     }
@@ -3416,8 +3620,8 @@
       profileHeader.innerHTML = `
       ${avatarHtml}
       <div class="bluesky-profile-info">
-        <h2 class="bluesky-profile-name">${escapeHtml7(first.displayName || first.authorHandle)}</h2>
-        <span class="bluesky-profile-handle">@${escapeHtml7(first.authorHandle)}</span>
+        <h2 class="bluesky-profile-name">${escapeHtml6(first.displayName || first.authorHandle)}</h2>
+        <span class="bluesky-profile-handle">@${escapeHtml6(first.authorHandle)}</span>
         <span class="bluesky-profile-count">${stubs.length} archived posts</span>
       </div>
     `;
@@ -3492,7 +3696,7 @@
       clearRenderedCards();
       timeline.innerHTML = "";
       if (filtered.length === 0 && searchTerm) {
-        timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml7(searchTerm)}"</div>`;
+        timeline.innerHTML = `<div class="timeline-no-results">No posts match "${escapeHtml6(searchTerm)}"</div>`;
         return;
       }
       await renderNextBatch();
@@ -3529,7 +3733,7 @@
   }
 
   // view/src/bluesky-post-detail.ts
-  function escapeHtml8(text) {
+  function escapeHtml7(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -3591,7 +3795,7 @@
       overlay.innerHTML = `
       <button class="reddit-lightbox-close" aria-label="Close">&times;</button>
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
-      <img src="${images[currentIndex].src}" alt="${escapeHtml8(images[currentIndex].name)}" />
+      <img src="${images[currentIndex].src}" alt="${escapeHtml7(images[currentIndex].name)}" />
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
       ${images.length > 1 ? `<div class="reddit-lightbox-counter">${currentIndex + 1} / ${images.length}</div>` : ""}
     `;
@@ -3663,14 +3867,14 @@
     header.className = "bluesky-reply-header";
     let avatarHtml = "";
     if (reply.avatarUrl) {
-      avatarHtml = `<img class="bluesky-reply-avatar" src="${escapeHtml8(reply.avatarUrl)}" alt="" />`;
+      avatarHtml = `<img class="bluesky-reply-avatar" src="${escapeHtml7(reply.avatarUrl)}" alt="" />`;
     } else {
       avatarHtml = `<div class="bluesky-reply-avatar bluesky-avatar-placeholder"></div>`;
     }
     header.innerHTML = `
     ${avatarHtml}
-    <span class="bluesky-display-name">${escapeHtml8(displayName)}</span>
-    <span class="bluesky-handle">@${escapeHtml8(reply.author)}</span>
+    <span class="bluesky-display-name">${escapeHtml7(displayName)}</span>
+    <span class="bluesky-handle">@${escapeHtml7(reply.author)}</span>
     <span class="bluesky-timestamp">${formatRelativeTime3(reply.createdAt)}</span>
   `;
     el.appendChild(header);
@@ -3751,15 +3955,15 @@
     header.className = "bluesky-detail-header";
     let avatarHtml = "";
     if (avatarUrl) {
-      avatarHtml = `<img class="bluesky-detail-avatar" src="${escapeHtml8(avatarUrl)}" alt="" />`;
+      avatarHtml = `<img class="bluesky-detail-avatar" src="${escapeHtml7(avatarUrl)}" alt="" />`;
     }
     header.innerHTML = `
     ${avatarHtml}
     <div class="bluesky-detail-author">
-      <span class="bluesky-display-name">${escapeHtml8(displayName)}</span>
-      <span class="bluesky-handle">@${escapeHtml8(metadata.authorHandle)}</span>
+      <span class="bluesky-display-name">${escapeHtml7(displayName)}</span>
+      <span class="bluesky-handle">@${escapeHtml7(metadata.authorHandle)}</span>
     </div>
-    ${metadata.url ? `<a class="social-open-original" href="${escapeHtml8(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post" style="margin-left:auto;">
+    ${metadata.url ? `<a class="social-open-original" href="${escapeHtml7(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post" style="margin-left:auto;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       Original
     </a>` : ""}
@@ -3814,7 +4018,7 @@
         const thumbSrc = `/api/files/download?path=${encodeURIComponent(thumbnailFile.path)}`;
         thumbHtml = `<img class="bluesky-external-thumb" src="${thumbSrc}" alt="" />`;
       } else if (metadata.externalLink.thumb) {
-        thumbHtml = `<img class="bluesky-external-thumb" src="${escapeHtml8(metadata.externalLink.thumb)}" alt="" />`;
+        thumbHtml = `<img class="bluesky-external-thumb" src="${escapeHtml7(metadata.externalLink.thumb)}" alt="" />`;
       }
       let domain = "";
       try {
@@ -3825,9 +4029,9 @@
       linkCard.innerHTML = `
       ${thumbHtml}
       <div class="bluesky-external-info">
-        <span class="bluesky-external-domain">${escapeHtml8(domain)}</span>
-        <span class="bluesky-external-title">${escapeHtml8(metadata.externalLink.title)}</span>
-        ${metadata.externalLink.description ? `<span class="bluesky-external-desc">${escapeHtml8(metadata.externalLink.description)}</span>` : ""}
+        <span class="bluesky-external-domain">${escapeHtml7(domain)}</span>
+        <span class="bluesky-external-title">${escapeHtml7(metadata.externalLink.title)}</span>
+        ${metadata.externalLink.description ? `<span class="bluesky-external-desc">${escapeHtml7(metadata.externalLink.description)}</span>` : ""}
       </div>
     `;
       wrapper.appendChild(linkCard);
@@ -3838,10 +4042,10 @@
       const quoteDisplayName = metadata.quotePost.displayName || metadata.quotePost.authorHandle;
       quoteCard.innerHTML = `
       <div class="bluesky-quote-header">
-        <span class="bluesky-display-name">${escapeHtml8(quoteDisplayName)}</span>
-        <span class="bluesky-handle">@${escapeHtml8(metadata.quotePost.authorHandle)}</span>
+        <span class="bluesky-display-name">${escapeHtml7(quoteDisplayName)}</span>
+        <span class="bluesky-handle">@${escapeHtml7(metadata.quotePost.authorHandle)}</span>
       </div>
-      <div class="bluesky-quote-text">${escapeHtml8(metadata.quotePost.text).replace(/\n/g, "<br>")}</div>
+      <div class="bluesky-quote-text">${escapeHtml7(metadata.quotePost.text).replace(/\n/g, "<br>")}</div>
     `;
       wrapper.appendChild(quoteCard);
     }
@@ -3872,7 +4076,7 @@
   }
 
   // view/src/twitter-timeline.ts
-  function escapeHtml9(text) {
+  function escapeHtml8(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -3921,7 +4125,7 @@
       overlay.innerHTML = `
       <button class="reddit-lightbox-close" aria-label="Close">&times;</button>
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
-      <img src="${images[currentIndex].src}" alt="${escapeHtml9(images[currentIndex].name)}" />
+      <img src="${images[currentIndex].src}" alt="${escapeHtml8(images[currentIndex].name)}" />
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
       ${images.length > 1 ? `<div class="reddit-lightbox-counter">${currentIndex + 1} / ${images.length}</div>` : ""}
     `;
@@ -3963,12 +4167,12 @@
   function renderTweetText(metadata) {
     const el = document.createElement("div");
     el.className = "bluesky-post-text";
-    let html = escapeHtml9(metadata.text);
+    let html = escapeHtml8(metadata.text);
     if (metadata.links) {
       for (const link of metadata.links) {
         html = html.replace(
           new RegExp(`https?://t\\.co/\\w+`),
-          `<a class="twitter-link" href="${escapeHtml9(link.expanded)}" target="_blank" rel="noopener noreferrer">${escapeHtml9(link.display)}</a>`
+          `<a class="twitter-link" href="${escapeHtml8(link.expanded)}" target="_blank" rel="noopener noreferrer">${escapeHtml8(link.display)}</a>`
         );
       }
     }
@@ -3993,7 +4197,7 @@
     header.className = "bluesky-post-header";
     let avatarHtml = "";
     if (avatarUrl) {
-      avatarHtml = `<img class="bluesky-avatar" src="${escapeHtml9(avatarUrl)}" alt="" />`;
+      avatarHtml = `<img class="bluesky-avatar" src="${escapeHtml8(avatarUrl)}" alt="" />`;
     } else {
       avatarHtml = `<div class="bluesky-avatar bluesky-avatar-placeholder"></div>`;
     }
@@ -4001,8 +4205,8 @@
     header.innerHTML = `
     ${avatarHtml}
     <div class="bluesky-post-author-info">
-      <span class="bluesky-display-name">${escapeHtml9(meta.name)} ${verifiedHtml}</span>
-      <span class="bluesky-handle">@${escapeHtml9(meta.screenName)}</span>
+      <span class="bluesky-display-name">${escapeHtml8(meta.name)} ${verifiedHtml}</span>
+      <span class="bluesky-handle">@${escapeHtml8(meta.screenName)}</span>
     </div>
     <span class="bluesky-timestamp">${formatRelativeTime4(meta.created)}</span>
   `;
@@ -4050,10 +4254,10 @@
       quoteCard.className = "bluesky-quote-card";
       quoteCard.innerHTML = `
       <div class="bluesky-quote-header">
-        <span class="bluesky-display-name">${escapeHtml9(meta.quoteTweet.name)}</span>
-        <span class="bluesky-handle">@${escapeHtml9(meta.quoteTweet.screenName)}</span>
+        <span class="bluesky-display-name">${escapeHtml8(meta.quoteTweet.name)}</span>
+        <span class="bluesky-handle">@${escapeHtml8(meta.quoteTweet.screenName)}</span>
       </div>
-      <div class="bluesky-quote-text">${escapeHtml9(meta.quoteTweet.text).replace(/\n/g, "<br>")}</div>
+      <div class="bluesky-quote-text">${escapeHtml8(meta.quoteTweet.text).replace(/\n/g, "<br>")}</div>
     `;
       card.appendChild(quoteCard);
     }
@@ -4143,8 +4347,8 @@
       profileHeader.innerHTML = `
       ${avatarHtml}
       <div class="bluesky-profile-info">
-        <h2 class="bluesky-profile-name">${escapeHtml9(first.name)} ${verifiedHtml}</h2>
-        <span class="bluesky-profile-handle">@${escapeHtml9(first.screenName)}</span>
+        <h2 class="bluesky-profile-name">${escapeHtml8(first.name)} ${verifiedHtml}</h2>
+        <span class="bluesky-profile-handle">@${escapeHtml8(first.screenName)}</span>
         <span class="bluesky-profile-count">${stubs.length} archived tweets</span>
       </div>
     `;
@@ -4219,7 +4423,7 @@
       clearRenderedCards();
       timeline.innerHTML = "";
       if (filtered.length === 0 && searchTerm) {
-        timeline.innerHTML = `<div class="timeline-no-results">No tweets match "${escapeHtml9(searchTerm)}"</div>`;
+        timeline.innerHTML = `<div class="timeline-no-results">No tweets match "${escapeHtml8(searchTerm)}"</div>`;
         return;
       }
       await renderNextBatch();
@@ -4256,7 +4460,7 @@
   }
 
   // view/src/twitter-post-detail.ts
-  function escapeHtml10(text) {
+  function escapeHtml9(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -4296,7 +4500,7 @@
       overlay.innerHTML = `
       <button class="reddit-lightbox-close" aria-label="Close">&times;</button>
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-prev" aria-label="Previous">&#8249;</button>` : ""}
-      <img src="${images[currentIndex].src}" alt="${escapeHtml10(images[currentIndex].name)}" />
+      <img src="${images[currentIndex].src}" alt="${escapeHtml9(images[currentIndex].name)}" />
       ${images.length > 1 ? `<button class="reddit-lightbox-nav reddit-lightbox-next" aria-label="Next">&#8250;</button>` : ""}
       ${images.length > 1 ? `<div class="reddit-lightbox-counter">${currentIndex + 1} / ${images.length}</div>` : ""}
     `;
@@ -4337,11 +4541,11 @@
   }
   function renderTwitterRichText(metadata) {
     const el = document.createElement("div");
-    let html = escapeHtml10(metadata.text);
+    let html = escapeHtml9(metadata.text);
     if (metadata.links) {
       for (const link of metadata.links) {
-        const escapedDisplay = escapeHtml10(link.display);
-        const escapedExpanded = escapeHtml10(link.expanded);
+        const escapedDisplay = escapeHtml9(link.display);
+        const escapedExpanded = escapeHtml9(link.expanded);
         html = html.replace(
           new RegExp(`https?://t\\.co/\\w+`),
           `<a class="twitter-link" href="${escapedExpanded}" target="_blank" rel="noopener noreferrer">${escapedDisplay}</a>`
@@ -4396,16 +4600,16 @@
     header.className = "twitter-detail-header";
     let avatarHtml = "";
     if (avatarUrl) {
-      avatarHtml = `<img class="twitter-detail-avatar" src="${escapeHtml10(avatarUrl)}" alt="" />`;
+      avatarHtml = `<img class="twitter-detail-avatar" src="${escapeHtml9(avatarUrl)}" alt="" />`;
     }
     const verifiedHtml = metadata.verified ? `<span class="twitter-verified">${VERIFIED_ICON2}</span>` : "";
     header.innerHTML = `
     ${avatarHtml}
     <div class="twitter-detail-author">
-      <span class="twitter-display-name">${escapeHtml10(metadata.name)} ${verifiedHtml}</span>
-      <span class="twitter-handle">@${escapeHtml10(metadata.screenName)}</span>
+      <span class="twitter-display-name">${escapeHtml9(metadata.name)} ${verifiedHtml}</span>
+      <span class="twitter-handle">@${escapeHtml9(metadata.screenName)}</span>
     </div>
-    ${metadata.url ? `<a class="social-open-original" href="${escapeHtml10(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post" style="margin-left:auto;">
+    ${metadata.url ? `<a class="social-open-original" href="${escapeHtml9(metadata.url)}" target="_blank" rel="noopener noreferrer" title="Open original post" style="margin-left:auto;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       Original
     </a>` : ""}
@@ -4414,7 +4618,7 @@
     if (metadata.replyTo && metadata.replyTo.screenName) {
       const replyIndicator = document.createElement("div");
       replyIndicator.className = "twitter-reply-indicator";
-      replyIndicator.innerHTML = `Replying to <a class="twitter-mention" href="https://x.com/${escapeHtml10(metadata.replyTo.screenName)}" target="_blank" rel="noopener noreferrer">@${escapeHtml10(metadata.replyTo.screenName)}</a>`;
+      replyIndicator.innerHTML = `Replying to <a class="twitter-mention" href="https://x.com/${escapeHtml9(metadata.replyTo.screenName)}" target="_blank" rel="noopener noreferrer">@${escapeHtml9(metadata.replyTo.screenName)}</a>`;
       wrapper.appendChild(replyIndicator);
     }
     const textEl = renderTwitterRichText(metadata);
@@ -4460,10 +4664,10 @@
       quoteCard.className = "bluesky-quote-card";
       quoteCard.innerHTML = `
       <div class="bluesky-quote-header">
-        <span class="bluesky-display-name">${escapeHtml10(metadata.quoteTweet.name)}</span>
-        <span class="bluesky-handle">@${escapeHtml10(metadata.quoteTweet.screenName)}</span>
+        <span class="bluesky-display-name">${escapeHtml9(metadata.quoteTweet.name)}</span>
+        <span class="bluesky-handle">@${escapeHtml9(metadata.quoteTweet.screenName)}</span>
       </div>
-      <div class="bluesky-quote-text">${escapeHtml10(metadata.quoteTweet.text).replace(/\n/g, "<br>")}</div>
+      <div class="bluesky-quote-text">${escapeHtml9(metadata.quoteTweet.text).replace(/\n/g, "<br>")}</div>
     `;
       wrapper.appendChild(quoteCard);
     }

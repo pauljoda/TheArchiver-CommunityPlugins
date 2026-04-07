@@ -410,6 +410,178 @@ const CSS = `
   font-size: 0.875rem;
 }
 
+/* ── Comments ── */
+.yt-comments-section {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.yt-comments-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.yt-comments-heading {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.yt-sort-bar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  padding: 0.1875rem;
+}
+
+.yt-sort-btn {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3125rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.yt-sort-btn:hover {
+  color: var(--foreground);
+}
+
+.yt-sort-btn.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.yt-comments-empty {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  padding: 1rem 0;
+}
+
+.yt-comment {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.yt-comment:last-child {
+  border-bottom: none;
+}
+
+.yt-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.yt-comment-author {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.yt-comment-uploader {
+  color: var(--primary);
+}
+
+.yt-comment-badge {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.yt-comment-badge-heart {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.yt-comment-date {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.yt-comment-body {
+  font-size: 0.875rem;
+  color: var(--foreground);
+  line-height: 1.6;
+  word-break: break-word;
+  margin-bottom: 0.375rem;
+}
+
+.yt-comment-likes {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* ── Collapse toggle ── */
+.yt-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.yt-comment-toggle:hover {
+  color: var(--foreground);
+}
+
+.yt-comment-toggle-icon {
+  display: inline-block;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.yt-comment-toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.yt-comment-toggle-text {
+  font-weight: 500;
+}
+
+/* ── Threaded replies ── */
+.yt-comment-replies {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--thread-color, var(--border));
+  cursor: default;
+  transition: border-color 0.15s;
+}
+
+.yt-comment-replies:hover {
+  border-left-color: color-mix(in oklch, var(--thread-color, var(--border)), var(--foreground) 25%);
+}
+
+.yt-comment-replies.collapsed {
+  display: none;
+}
+
+.yt-comment-replies .yt-comment {
+  padding: 0.5rem 0;
+}
+
 /* ── Source link ── */
 .yt-source-link {
   display: inline-flex;

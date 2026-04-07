@@ -279,6 +279,15 @@ const CSS = `
   margin-top: 1.5rem;
 }
 
+.reddit-comments-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .reddit-comments-heading {
   font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
   font-size: 0.8125rem;
@@ -286,9 +295,37 @@ const CSS = `
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted-foreground);
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
+}
+
+.reddit-sort-bar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  padding: 0.1875rem;
+}
+
+.reddit-sort-btn {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3125rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.reddit-sort-btn:hover {
+  color: var(--foreground);
+}
+
+.reddit-sort-btn.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
 .reddit-comment {
@@ -297,10 +334,56 @@ const CSS = `
   margin-bottom: 0.75rem;
 }
 
+/* ── Collapse toggle ── */
+.reddit-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.reddit-comment-toggle:hover {
+  color: var(--foreground);
+}
+
+.reddit-comment-toggle-icon {
+  display: inline-block;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.reddit-comment-toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.reddit-comment-toggle-text {
+  font-weight: 500;
+}
+
+/* ── Threaded replies ── */
 .reddit-comment-thread {
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--thread-color, var(--border));
   padding-left: 1rem;
   margin-left: 0.5rem;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+
+.reddit-comment-thread:hover {
+  border-left-color: color-mix(in oklch, var(--thread-color, var(--border)), var(--foreground) 25%);
+}
+
+.reddit-comment-thread.collapsed {
+  display: none;
 }
 
 .reddit-comment-header {
