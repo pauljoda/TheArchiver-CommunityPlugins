@@ -5,8 +5,8 @@
   "scripts": {
     "build": "tsc && node view/build.js",
     "build:view": "node view/build.js",
-    "deploy": "tsc && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/view && cp dist/index.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-social/ && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-social/view/ && if [ -d $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social ]; then cp dist/index.js manifest.json $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/ && mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view && cp view/index.js $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view/; fi",
-    "package": "tsc && node view/build.js && mkdir -p dist/package/view && cp dist/index.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-social.zip ."
+    "deploy": "tsc && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/view && cp dist/*.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-social/ && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-social/view/ && if [ -d $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social ]; then cp dist/*.js manifest.json $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/ && mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view && cp view/index.js $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view/; fi",
+    "package": "tsc && node view/build.js && mkdir -p dist/package/view && cp dist/*.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-social.zip ."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
