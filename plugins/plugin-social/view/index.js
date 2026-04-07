@@ -2779,7 +2779,7 @@
   var BATCH_SIZE = 20;
   var INITIAL_INDEX_BATCH = 24;
   var INDEX_BATCH_SIZE = 48;
-  var INDEX_CONCURRENCY = 8;
+  var INDEX_CONCURRENCY = 24;
   function debounce(fn, ms) {
     let timer;
     return () => {
@@ -2977,7 +2977,7 @@
         indexedStubs.push(...loaded);
         updateIndexStatus();
         if (!searchTerm && sortMode === "new") {
-          filtered = applySortAndFilter();
+          filtered.push(...loaded);
           await nextFrame();
           void renderNextBatch();
         }
@@ -3779,7 +3779,7 @@
   var BATCH_SIZE2 = 20;
   var INITIAL_INDEX_BATCH2 = 24;
   var INDEX_BATCH_SIZE2 = 48;
-  var INDEX_CONCURRENCY2 = 8;
+  var INDEX_CONCURRENCY2 = 24;
   function debounce2(fn, ms) {
     let timer;
     return () => {
@@ -3981,7 +3981,7 @@
         indexedStubs.push(...loaded);
         updateIndexStatus();
         if (!searchTerm && sortMode === "new") {
-          filtered = applySortAndFilter();
+          filtered.push(...loaded);
           await nextFrame();
           void renderNextBatch();
         }
@@ -5116,6 +5116,15 @@
     }
     return breadcrumb;
   }
+  function findScrollParent(el) {
+    let node = el.parentElement;
+    while (node) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (overflow === "auto" || overflow === "scroll") return node;
+      node = node.parentElement;
+    }
+    return document.documentElement;
+  }
   var RedditApp = class {
     constructor(container, api) {
       __publicField(this, "container");
@@ -5123,6 +5132,10 @@
       __publicField(this, "contentEl");
       __publicField(this, "viewCleanup");
       __publicField(this, "cache", new SocialViewCache());
+      /** Cached timeline that's hidden while viewing a post */
+      __publicField(this, "cachedTimeline", null);
+      /** The post detail container shown over a cached timeline */
+      __publicField(this, "postOverlay", null);
       this.container = container;
       this.api = this.cache.wrap(api);
       this.container.innerHTML = "";
@@ -5133,20 +5146,74 @@
       this.renderCurrentPath();
     }
     async renderCurrentPath() {
+      const { currentPath, trackedDirectory } = this.api;
+      const current = currentPath.replace(/\/+$/, "");
+      if (this.cachedTimeline && current === this.cachedTimeline.path) {
+        if (this.postOverlay) {
+          this.postOverlay.remove();
+          this.postOverlay = null;
+        }
+        this.viewCleanup?.();
+        this.viewCleanup = this.cachedTimeline.cleanup;
+        this.cachedTimeline.container.style.display = "";
+        if (this.cachedTimeline.breadcrumb) {
+          this.cachedTimeline.breadcrumb.style.display = "";
+        }
+        const scrollParent = findScrollParent(this.contentEl);
+        requestAnimationFrame(() => {
+          scrollParent.scrollTop = this.cachedTimeline.scrollTop;
+        });
+        return;
+      }
+      if (this.cachedTimeline && current.startsWith(this.cachedTimeline.path + "/")) {
+        const scrollParent = findScrollParent(this.contentEl);
+        this.cachedTimeline.scrollTop = scrollParent.scrollTop;
+        this.cachedTimeline.container.style.display = "none";
+        if (this.cachedTimeline.breadcrumb) {
+          this.cachedTimeline.breadcrumb.style.display = "none";
+        }
+        this.postOverlay = document.createElement("div");
+        const tracked2 = trackedDirectory.replace(/\/+$/, "");
+        const isRoot2 = current === tracked2;
+        if (!isRoot2) {
+          const breadcrumb = renderBreadcrumb(
+            currentPath,
+            trackedDirectory,
+            (path) => this.api.navigate(path)
+          );
+          this.postOverlay.appendChild(breadcrumb);
+        }
+        const postContainer = document.createElement("div");
+        this.postOverlay.appendChild(postContainer);
+        this.contentEl.appendChild(this.postOverlay);
+        scrollParent.scrollTop = 0;
+        const entries2 = await this.api.fetchFiles(currentPath);
+        const viewInfo2 = await detectViewInfo(this.api, currentPath, entries2);
+        if (viewInfo2.mode === "post") {
+          if (viewInfo2.platform === "bluesky") {
+            await renderBlueskyPostDetail(postContainer, this.api, currentPath);
+          } else if (viewInfo2.platform === "twitter") {
+            await renderTwitterPostDetail(postContainer, this.api, currentPath);
+          } else {
+            await renderPostDetail(postContainer, this.api, currentPath);
+          }
+        }
+        return;
+      }
+      this.destroyCachedTimeline();
       this.viewCleanup?.();
       this.viewCleanup = void 0;
-      const { currentPath, trackedDirectory } = this.api;
       this.contentEl.innerHTML = "";
       const tracked = trackedDirectory.replace(/\/+$/, "");
-      const current = currentPath.replace(/\/+$/, "");
       const isRoot = current === tracked;
+      let breadcrumbEl = null;
       if (!isRoot) {
-        const breadcrumb = renderBreadcrumb(
+        breadcrumbEl = renderBreadcrumb(
           currentPath,
           trackedDirectory,
           (path) => this.api.navigate(path)
         );
-        this.contentEl.appendChild(breadcrumb);
+        this.contentEl.appendChild(breadcrumbEl);
       }
       const viewContainer = document.createElement("div");
       viewContainer.innerHTML = `<div class="reddit-loading">Loading...</div>`;
@@ -5163,30 +5230,40 @@
             (path) => this.api.navigate(path)
           );
           break;
-        case "post-list":
+        case "post-list": {
+          let cleanup;
           if (viewInfo.platform === "bluesky") {
-            this.viewCleanup = await renderBlueskyTimeline(
+            cleanup = await renderBlueskyTimeline(
               viewContainer,
               this.api,
               currentPath,
               (path) => this.api.navigate(path)
             );
           } else if (viewInfo.platform === "twitter") {
-            this.viewCleanup = await renderTwitterTimeline(
+            cleanup = await renderTwitterTimeline(
               viewContainer,
               this.api,
               currentPath,
               (path) => this.api.navigate(path)
             );
           } else {
-            this.viewCleanup = await renderRedditTimeline(
+            cleanup = await renderRedditTimeline(
               viewContainer,
               this.api,
               currentPath,
               (path) => this.api.navigate(path)
             );
           }
+          this.viewCleanup = cleanup;
+          this.cachedTimeline = {
+            path: current,
+            container: viewContainer,
+            breadcrumb: breadcrumbEl,
+            cleanup,
+            scrollTop: 0
+          };
           break;
+        }
         case "post":
           if (viewInfo.platform === "bluesky") {
             await renderBlueskyPostDetail(viewContainer, this.api, currentPath);
@@ -5198,11 +5275,22 @@
           break;
       }
     }
+    destroyCachedTimeline() {
+      if (this.cachedTimeline) {
+        this.cachedTimeline.cleanup?.();
+        this.cachedTimeline = null;
+      }
+      if (this.postOverlay) {
+        this.postOverlay.remove();
+        this.postOverlay = null;
+      }
+    }
     onPathChange(newPath, api) {
       this.api = this.cache.wrap(api);
       this.renderCurrentPath();
     }
     destroy() {
+      this.destroyCachedTimeline();
       this.viewCleanup?.();
       this.viewCleanup = void 0;
       this.cache.clear();

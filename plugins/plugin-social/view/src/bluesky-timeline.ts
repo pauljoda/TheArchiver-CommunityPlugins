@@ -266,7 +266,7 @@ function renderPostCard(
 const BATCH_SIZE = 20;
 const INITIAL_INDEX_BATCH = 24;
 const INDEX_BATCH_SIZE = 48;
-const INDEX_CONCURRENCY = 8;
+const INDEX_CONCURRENCY = 24;
 
 interface PostStub {
   path: string;
@@ -545,7 +545,9 @@ export async function renderBlueskyTimeline(
       updateIndexStatus();
 
       if (!searchTerm && sortMode === "new") {
-        filtered = applySortAndFilter();
+        // Append without re-sorting — stubs arrive in modifiedAt-descending
+        // order which is already correct for "newest" display
+        filtered.push(...loaded);
         await nextFrame();
         void renderNextBatch();
       }

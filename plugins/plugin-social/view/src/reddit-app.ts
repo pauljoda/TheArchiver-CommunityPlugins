@@ -35,6 +35,20 @@ interface ViewInfo {
 
 type ViewCleanup = () => void;
 
+/** Cached timeline state — kept alive so we can restore on back-navigation */
+interface CachedTimeline {
+  /** The path this timeline was rendered for */
+  path: string;
+  /** The DOM container holding the timeline (hidden when viewing a post) */
+  container: HTMLElement;
+  /** The breadcrumb element above the timeline */
+  breadcrumb: HTMLElement | null;
+  /** Cleanup function from the timeline renderer */
+  cleanup?: ViewCleanup;
+  /** Scroll position (on the container's scroll parent) when user left */
+  scrollTop: number;
+}
+
 async function detectViewInfo(
   api: PluginViewAPI,
   dirPath: string,
@@ -142,12 +156,27 @@ function renderBreadcrumb(
   return breadcrumb;
 }
 
+/** Find the nearest scrollable ancestor of an element */
+function findScrollParent(el: HTMLElement): HTMLElement {
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+    node = node.parentElement;
+  }
+  return document.documentElement;
+}
+
 export class RedditApp {
   private container: HTMLElement;
   private api: PluginViewAPI;
   private contentEl: HTMLElement;
   private viewCleanup?: ViewCleanup;
   private readonly cache = new SocialViewCache();
+  /** Cached timeline that's hidden while viewing a post */
+  private cachedTimeline: CachedTimeline | null = null;
+  /** The post detail container shown over a cached timeline */
+  private postOverlay: HTMLElement | null = null;
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
@@ -164,24 +193,102 @@ export class RedditApp {
   }
 
   async renderCurrentPath(): Promise<void> {
+    const { currentPath, trackedDirectory } = this.api;
+    const current = currentPath.replace(/\/+$/, "");
+
+    // ── Check if we can restore a cached timeline ──
+    if (this.cachedTimeline && current === this.cachedTimeline.path) {
+      // Going back to the cached timeline — restore it
+      if (this.postOverlay) {
+        this.postOverlay.remove();
+        this.postOverlay = null;
+      }
+      // Clean up post-level cleanup if any
+      this.viewCleanup?.();
+      this.viewCleanup = this.cachedTimeline.cleanup;
+
+      // Show the cached timeline
+      this.cachedTimeline.container.style.display = "";
+      if (this.cachedTimeline.breadcrumb) {
+        this.cachedTimeline.breadcrumb.style.display = "";
+      }
+
+      // Restore scroll position
+      const scrollParent = findScrollParent(this.contentEl);
+      requestAnimationFrame(() => {
+        scrollParent.scrollTop = this.cachedTimeline!.scrollTop;
+      });
+      return;
+    }
+
+    // ── Check if we're drilling into a post from a cached timeline ──
+    if (
+      this.cachedTimeline &&
+      current.startsWith(this.cachedTimeline.path + "/")
+    ) {
+      // Save scroll position and hide timeline
+      const scrollParent = findScrollParent(this.contentEl);
+      this.cachedTimeline.scrollTop = scrollParent.scrollTop;
+      this.cachedTimeline.container.style.display = "none";
+      if (this.cachedTimeline.breadcrumb) {
+        this.cachedTimeline.breadcrumb.style.display = "none";
+      }
+
+      // Render post detail in an overlay container
+      this.postOverlay = document.createElement("div");
+
+      // Add breadcrumb for the post
+      const tracked = trackedDirectory.replace(/\/+$/, "");
+      const isRoot = current === tracked;
+      if (!isRoot) {
+        const breadcrumb = renderBreadcrumb(
+          currentPath,
+          trackedDirectory,
+          (path) => this.api.navigate(path)
+        );
+        this.postOverlay.appendChild(breadcrumb);
+      }
+
+      const postContainer = document.createElement("div");
+      this.postOverlay.appendChild(postContainer);
+      this.contentEl.appendChild(this.postOverlay);
+
+      // Scroll to top for the post
+      scrollParent.scrollTop = 0;
+
+      const entries = await this.api.fetchFiles(currentPath);
+      const viewInfo = await detectViewInfo(this.api, currentPath, entries);
+
+      if (viewInfo.mode === "post") {
+        if (viewInfo.platform === "bluesky") {
+          await renderBlueskyPostDetail(postContainer, this.api, currentPath);
+        } else if (viewInfo.platform === "twitter") {
+          await renderTwitterPostDetail(postContainer, this.api, currentPath);
+        } else {
+          await renderPostDetail(postContainer, this.api, currentPath);
+        }
+      }
+      return;
+    }
+
+    // ── Full navigation — destroy any cached state and render fresh ──
+    this.destroyCachedTimeline();
     this.viewCleanup?.();
     this.viewCleanup = undefined;
-
-    const { currentPath, trackedDirectory } = this.api;
 
     this.contentEl.innerHTML = "";
 
     const tracked = trackedDirectory.replace(/\/+$/, "");
-    const current = currentPath.replace(/\/+$/, "");
     const isRoot = current === tracked;
 
+    let breadcrumbEl: HTMLElement | null = null;
     if (!isRoot) {
-      const breadcrumb = renderBreadcrumb(
+      breadcrumbEl = renderBreadcrumb(
         currentPath,
         trackedDirectory,
         (path) => this.api.navigate(path)
       );
-      this.contentEl.appendChild(breadcrumb);
+      this.contentEl.appendChild(breadcrumbEl);
     }
 
     const viewContainer = document.createElement("div");
@@ -203,30 +310,42 @@ export class RedditApp {
         );
         break;
 
-      case "post-list":
+      case "post-list": {
+        let cleanup: ViewCleanup | undefined;
         if (viewInfo.platform === "bluesky") {
-          this.viewCleanup = await renderBlueskyTimeline(
+          cleanup = await renderBlueskyTimeline(
             viewContainer,
             this.api,
             currentPath,
             (path) => this.api.navigate(path)
           );
         } else if (viewInfo.platform === "twitter") {
-          this.viewCleanup = await renderTwitterTimeline(
+          cleanup = await renderTwitterTimeline(
             viewContainer,
             this.api,
             currentPath,
             (path) => this.api.navigate(path)
           );
         } else {
-          this.viewCleanup = await renderRedditTimeline(
+          cleanup = await renderRedditTimeline(
             viewContainer,
             this.api,
             currentPath,
             (path) => this.api.navigate(path)
           );
         }
+        this.viewCleanup = cleanup;
+
+        // Cache this timeline for instant back-navigation
+        this.cachedTimeline = {
+          path: current,
+          container: viewContainer,
+          breadcrumb: breadcrumbEl,
+          cleanup,
+          scrollTop: 0,
+        };
         break;
+      }
 
       case "post":
         if (viewInfo.platform === "bluesky") {
@@ -240,12 +359,24 @@ export class RedditApp {
     }
   }
 
+  private destroyCachedTimeline(): void {
+    if (this.cachedTimeline) {
+      this.cachedTimeline.cleanup?.();
+      this.cachedTimeline = null;
+    }
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
+  }
+
   onPathChange(newPath: string, api: PluginViewAPI): void {
     this.api = this.cache.wrap(api);
     this.renderCurrentPath();
   }
 
   destroy(): void {
+    this.destroyCachedTimeline();
     this.viewCleanup?.();
     this.viewCleanup = undefined;
     this.cache.clear();
