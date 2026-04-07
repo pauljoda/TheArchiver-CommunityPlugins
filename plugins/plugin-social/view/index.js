@@ -1427,6 +1427,32 @@
 }
 
 /* \u2500\u2500 Open Original Button \u2500\u2500 */
+.social-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.social-back-btn:hover {
+  background: var(--muted);
+  border-color: var(--primary);
+}
+
+.social-back-btn svg {
+  flex-shrink: 0;
+}
+
 .social-open-original {
   display: inline-flex;
   align-items: center;
@@ -5163,13 +5189,11 @@
         this.postOverlay.remove();
       }
       this.postOverlay = document.createElement("div");
-      const { trackedDirectory } = this.api;
-      const breadcrumb = renderBreadcrumb(
-        postPath,
-        trackedDirectory,
-        () => this.popPost()
-      );
-      this.postOverlay.appendChild(breadcrumb);
+      const backBtn = document.createElement("button");
+      backBtn.className = "social-back-btn";
+      backBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg> Back`;
+      backBtn.addEventListener("click", () => this.popPost());
+      this.postOverlay.appendChild(backBtn);
       const postContainer = document.createElement("div");
       this.postOverlay.appendChild(postContainer);
       this.contentEl.appendChild(this.postOverlay);

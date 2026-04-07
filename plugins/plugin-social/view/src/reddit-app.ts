@@ -328,14 +328,12 @@ export class RedditApp {
     // Build post overlay
     this.postOverlay = document.createElement("div");
 
-    // Breadcrumb — clicking any segment pops back to the timeline
-    const { trackedDirectory } = this.api;
-    const breadcrumb = renderBreadcrumb(
-      postPath,
-      trackedDirectory,
-      () => this.popPost()
-    );
-    this.postOverlay.appendChild(breadcrumb);
+    // Back button
+    const backBtn = document.createElement("button");
+    backBtn.className = "social-back-btn";
+    backBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg> Back`;
+    backBtn.addEventListener("click", () => this.popPost());
+    this.postOverlay.appendChild(backBtn);
 
     const postContainer = document.createElement("div");
     this.postOverlay.appendChild(postContainer);
