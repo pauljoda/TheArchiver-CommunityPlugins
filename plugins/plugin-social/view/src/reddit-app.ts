@@ -166,6 +166,8 @@ export class RedditApp {
   private timelineBreadcrumb: HTMLElement | null = null;
   /** Container for the inline post detail */
   private postOverlay: HTMLElement | null = null;
+  /** Saved scroll position from the timeline (survives clearing inlinePost) */
+  private savedScrollTop = 0;
   /** Bound popstate handler */
   private popstateHandler: ((e: PopStateEvent) => void) | null = null;
 
@@ -216,9 +218,9 @@ export class RedditApp {
         this.timelineBreadcrumb.style.display = "";
       }
       const scrollParent = findScrollParent(this.contentEl);
-      const savedScroll = this.inlinePost?.scrollTop ?? 0;
+      const scrollTarget = this.savedScrollTop;
       requestAnimationFrame(() => {
-        scrollParent.scrollTop = savedScroll;
+        scrollParent.scrollTop = scrollTarget;
       });
       return;
     }
@@ -321,9 +323,10 @@ export class RedditApp {
   /** Push into inline post mode — hides the timeline, shows the post */
   private pushPost(postPath: string): void {
     const scrollParent = findScrollParent(this.contentEl);
+    this.savedScrollTop = scrollParent.scrollTop;
     this.inlinePost = {
       postPath,
-      scrollTop: scrollParent.scrollTop,
+      scrollTop: this.savedScrollTop,
     };
     // Push a history entry so browser back button pops us out
     history.pushState({ socialInlinePost: true }, "");

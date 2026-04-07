@@ -23,7 +23,7 @@
     {
       "id": "socials",
       "name": "Socials",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "description": "Download images, galleries, and metadata from social media platforms",
       "author": "TheArchiver",
       "downloadFile": "plugin-social.zip",

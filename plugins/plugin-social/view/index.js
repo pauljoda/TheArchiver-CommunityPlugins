@@ -5030,6 +5030,8 @@
       __publicField(this, "timelineBreadcrumb", null);
       /** Container for the inline post detail */
       __publicField(this, "postOverlay", null);
+      /** Saved scroll position from the timeline (survives clearing inlinePost) */
+      __publicField(this, "savedScrollTop", 0);
       /** Bound popstate handler */
       __publicField(this, "popstateHandler", null);
       this.container = container;
@@ -5068,9 +5070,9 @@
           this.timelineBreadcrumb.style.display = "";
         }
         const scrollParent = findScrollParent(this.contentEl);
-        const savedScroll = this.inlinePost?.scrollTop ?? 0;
+        const scrollTarget = this.savedScrollTop;
         requestAnimationFrame(() => {
-          scrollParent.scrollTop = savedScroll;
+          scrollParent.scrollTop = scrollTarget;
         });
         return;
       }
@@ -5155,9 +5157,10 @@
     /** Push into inline post mode — hides the timeline, shows the post */
     pushPost(postPath) {
       const scrollParent = findScrollParent(this.contentEl);
+      this.savedScrollTop = scrollParent.scrollTop;
       this.inlinePost = {
         postPath,
-        scrollTop: scrollParent.scrollTop
+        scrollTop: this.savedScrollTop
       };
       history.pushState({ socialInlinePost: true }, "");
       this.render();
