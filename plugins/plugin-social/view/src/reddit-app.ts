@@ -18,13 +18,6 @@ const METADATA_FILES = new Set([
   ".no-icon",
 ]);
 
-/**
- * Determine what kind of directory we're looking at by inspecting its contents.
- *
- * - "root": contains only subdirectories (+ optional metadata like icon.jpg)
- * - "post-list": contains subdirectories that are posts (have Post.nfo or media)
- * - "post": contains Post.nfo, Comments.json, or media files — this IS a post
- */
 type ViewMode = "root" | "post-list" | "post";
 type Platform = "reddit" | "bluesky" | "twitter" | "unknown";
 
@@ -35,17 +28,9 @@ interface ViewInfo {
 
 type ViewCleanup = () => void;
 
-/** Cached timeline state — kept alive so we can restore on back-navigation */
-interface CachedTimeline {
-  /** The path this timeline was rendered for */
-  path: string;
-  /** The DOM container holding the timeline (hidden when viewing a post) */
-  container: HTMLElement;
-  /** The breadcrumb element above the timeline */
-  breadcrumb: HTMLElement | null;
-  /** Cleanup function from the timeline renderer */
-  cleanup?: ViewCleanup;
-  /** Scroll position (on the container's scroll parent) when user left */
+/** Internal state when viewing a post inline over the timeline */
+interface InlinePostState {
+  postPath: string;
   scrollTop: number;
 }
 
@@ -76,7 +61,6 @@ async function detectViewInfo(
     return { mode: "root", platform: "unknown" };
   }
 
-  // Sample the first child directory
   try {
     const firstChild = dirs[0];
     const childEntries = await api.fetchFiles(firstChild.path);
@@ -173,10 +157,17 @@ export class RedditApp {
   private contentEl: HTMLElement;
   private viewCleanup?: ViewCleanup;
   private readonly cache = new SocialViewCache();
-  /** Cached timeline that's hidden while viewing a post */
-  private cachedTimeline: CachedTimeline | null = null;
-  /** The post detail container shown over a cached timeline */
+
+  /** When set, we're showing an inline post detail over the hidden timeline */
+  private inlinePost: InlinePostState | null = null;
+  /** The timeline container (hidden when viewing a post) */
+  private timelineEl: HTMLElement | null = null;
+  /** The breadcrumb for the timeline view */
+  private timelineBreadcrumb: HTMLElement | null = null;
+  /** Container for the inline post detail */
   private postOverlay: HTMLElement | null = null;
+  /** Bound popstate handler */
+  private popstateHandler: ((e: PopStateEvent) => void) | null = null;
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
@@ -189,96 +180,66 @@ export class RedditApp {
     this.contentEl = document.createElement("div");
     this.container.appendChild(this.contentEl);
 
-    this.renderCurrentPath();
+    // Listen for browser back/forward to pop out of inline post
+    this.popstateHandler = () => {
+      if (this.inlinePost) {
+        this.inlinePost = null;
+        this.render();
+      }
+    };
+    window.addEventListener("popstate", this.popstateHandler);
+
+    this.render();
   }
 
-  async renderCurrentPath(): Promise<void> {
-    const { currentPath, trackedDirectory } = this.api;
-    const current = currentPath.replace(/\/+$/, "");
+  /** Top-level render — checks if we're in inline post mode or directory mode */
+  private async render(): Promise<void> {
+    if (this.inlinePost) {
+      await this.renderInlinePost(this.inlinePost);
+    } else {
+      await this.restoreOrRenderDirectory();
+    }
+  }
 
-    // ── Check if we can restore a cached timeline ──
-    if (this.cachedTimeline && current === this.cachedTimeline.path) {
-      // Going back to the cached timeline — restore it
-      if (this.postOverlay) {
-        this.postOverlay.remove();
-        this.postOverlay = null;
+  /** Either restore a cached timeline or render the directory from scratch */
+  private async restoreOrRenderDirectory(): Promise<void> {
+    // If we have a post overlay, remove it
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
+
+    // If we have a cached timeline, show it and restore scroll
+    if (this.timelineEl) {
+      this.timelineEl.style.display = "";
+      if (this.timelineBreadcrumb) {
+        this.timelineBreadcrumb.style.display = "";
       }
-      // Clean up post-level cleanup if any
-      this.viewCleanup?.();
-      this.viewCleanup = this.cachedTimeline.cleanup;
-
-      // Show the cached timeline
-      this.cachedTimeline.container.style.display = "";
-      if (this.cachedTimeline.breadcrumb) {
-        this.cachedTimeline.breadcrumb.style.display = "";
-      }
-
-      // Restore scroll position
       const scrollParent = findScrollParent(this.contentEl);
+      const savedScroll = this.inlinePost?.scrollTop ?? 0;
       requestAnimationFrame(() => {
-        scrollParent.scrollTop = this.cachedTimeline!.scrollTop;
+        scrollParent.scrollTop = savedScroll;
       });
       return;
     }
 
-    // ── Check if we're drilling into a post from a cached timeline ──
-    if (
-      this.cachedTimeline &&
-      current.startsWith(this.cachedTimeline.path + "/")
-    ) {
-      // Save scroll position and hide timeline
-      const scrollParent = findScrollParent(this.contentEl);
-      this.cachedTimeline.scrollTop = scrollParent.scrollTop;
-      this.cachedTimeline.container.style.display = "none";
-      if (this.cachedTimeline.breadcrumb) {
-        this.cachedTimeline.breadcrumb.style.display = "none";
-      }
+    // No cache — render from scratch
+    await this.renderDirectory();
+  }
 
-      // Render post detail in an overlay container
-      this.postOverlay = document.createElement("div");
-
-      // Add breadcrumb for the post
-      const tracked = trackedDirectory.replace(/\/+$/, "");
-      const isRoot = current === tracked;
-      if (!isRoot) {
-        const breadcrumb = renderBreadcrumb(
-          currentPath,
-          trackedDirectory,
-          (path) => this.api.navigate(path)
-        );
-        this.postOverlay.appendChild(breadcrumb);
-      }
-
-      const postContainer = document.createElement("div");
-      this.postOverlay.appendChild(postContainer);
-      this.contentEl.appendChild(this.postOverlay);
-
-      // Scroll to top for the post
-      scrollParent.scrollTop = 0;
-
-      const entries = await this.api.fetchFiles(currentPath);
-      const viewInfo = await detectViewInfo(this.api, currentPath, entries);
-
-      if (viewInfo.mode === "post") {
-        if (viewInfo.platform === "bluesky") {
-          await renderBlueskyPostDetail(postContainer, this.api, currentPath);
-        } else if (viewInfo.platform === "twitter") {
-          await renderTwitterPostDetail(postContainer, this.api, currentPath);
-        } else {
-          await renderPostDetail(postContainer, this.api, currentPath);
-        }
-      }
-      return;
-    }
-
-    // ── Full navigation — destroy any cached state and render fresh ──
-    this.destroyCachedTimeline();
+  /** Render the current directory view (root / post-list / post) */
+  private async renderDirectory(): Promise<void> {
+    // Clean up old state
     this.viewCleanup?.();
     this.viewCleanup = undefined;
+    this.timelineEl = null;
+    this.timelineBreadcrumb = null;
 
     this.contentEl.innerHTML = "";
 
+    const { currentPath, trackedDirectory } = this.api;
     const tracked = trackedDirectory.replace(/\/+$/, "");
+    const current = currentPath.replace(/\/+$/, "");
     const isRoot = current === tracked;
 
     let breadcrumbEl: HTMLElement | null = null;
@@ -311,39 +272,37 @@ export class RedditApp {
         break;
 
       case "post-list": {
+        // Pass our pushPost handler instead of api.navigate for post drill-down
+        const onPostClick = (path: string) => this.pushPost(path);
+
         let cleanup: ViewCleanup | undefined;
         if (viewInfo.platform === "bluesky") {
           cleanup = await renderBlueskyTimeline(
             viewContainer,
             this.api,
             currentPath,
-            (path) => this.api.navigate(path)
+            onPostClick
           );
         } else if (viewInfo.platform === "twitter") {
           cleanup = await renderTwitterTimeline(
             viewContainer,
             this.api,
             currentPath,
-            (path) => this.api.navigate(path)
+            onPostClick
           );
         } else {
           cleanup = await renderRedditTimeline(
             viewContainer,
             this.api,
             currentPath,
-            (path) => this.api.navigate(path)
+            onPostClick
           );
         }
         this.viewCleanup = cleanup;
 
         // Cache this timeline for instant back-navigation
-        this.cachedTimeline = {
-          path: current,
-          container: viewContainer,
-          breadcrumb: breadcrumbEl,
-          cleanup,
-          scrollTop: 0,
-        };
+        this.timelineEl = viewContainer;
+        this.timelineBreadcrumb = breadcrumbEl;
         break;
       }
 
@@ -359,26 +318,101 @@ export class RedditApp {
     }
   }
 
-  private destroyCachedTimeline(): void {
-    if (this.cachedTimeline) {
-      this.cachedTimeline.cleanup?.();
-      this.cachedTimeline = null;
+  /** Push into inline post mode — hides the timeline, shows the post */
+  private pushPost(postPath: string): void {
+    const scrollParent = findScrollParent(this.contentEl);
+    this.inlinePost = {
+      postPath,
+      scrollTop: scrollParent.scrollTop,
+    };
+    // Push a history entry so browser back button pops us out
+    history.pushState({ socialInlinePost: true }, "");
+    this.render();
+  }
+
+  /** Render the inline post detail over the hidden timeline */
+  private async renderInlinePost(state: InlinePostState): Promise<void> {
+    const { postPath } = state;
+
+    // Hide the timeline
+    if (this.timelineEl) {
+      this.timelineEl.style.display = "none";
     }
+    if (this.timelineBreadcrumb) {
+      this.timelineBreadcrumb.style.display = "none";
+    }
+
+    // Remove old overlay if any
     if (this.postOverlay) {
       this.postOverlay.remove();
-      this.postOverlay = null;
+    }
+
+    // Build post overlay
+    this.postOverlay = document.createElement("div");
+
+    // Breadcrumb — back link pops the inline state
+    const { trackedDirectory } = this.api;
+    const breadcrumb = renderBreadcrumb(
+      postPath,
+      trackedDirectory,
+      (path) => {
+        // Any breadcrumb click pops back to the timeline
+        this.inlinePost = null;
+        history.back();
+      }
+    );
+    this.postOverlay.appendChild(breadcrumb);
+
+    const postContainer = document.createElement("div");
+    this.postOverlay.appendChild(postContainer);
+    this.contentEl.appendChild(this.postOverlay);
+
+    // Scroll to top for the post
+    const scrollParent = findScrollParent(this.contentEl);
+    scrollParent.scrollTop = 0;
+
+    // Detect platform and render
+    const entries = await this.api.fetchFiles(postPath);
+    const viewInfo = await detectViewInfo(this.api, postPath, entries);
+
+    if (viewInfo.mode === "post") {
+      if (viewInfo.platform === "bluesky") {
+        await renderBlueskyPostDetail(postContainer, this.api, postPath);
+      } else if (viewInfo.platform === "twitter") {
+        await renderTwitterPostDetail(postContainer, this.api, postPath);
+      } else {
+        await renderPostDetail(postContainer, this.api, postPath);
+      }
     }
   }
 
   onPathChange(newPath: string, api: PluginViewAPI): void {
     this.api = this.cache.wrap(api);
-    this.renderCurrentPath();
+    // Host-driven navigation — clear any inline post state
+    this.inlinePost = null;
+    this.timelineEl = null;
+    this.timelineBreadcrumb = null;
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
+    this.renderDirectory();
   }
 
   destroy(): void {
-    this.destroyCachedTimeline();
     this.viewCleanup?.();
     this.viewCleanup = undefined;
+    this.inlinePost = null;
+    this.timelineEl = null;
+    this.timelineBreadcrumb = null;
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
+    if (this.popstateHandler) {
+      window.removeEventListener("popstate", this.popstateHandler);
+      this.popstateHandler = null;
+    }
     this.cache.clear();
     this.container.classList.remove("reddit-view");
     this.container.innerHTML = "";
