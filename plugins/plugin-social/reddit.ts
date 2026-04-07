@@ -3,7 +3,6 @@ import fs from "fs";
 
 import {
   execFileAsync,
-  decodeHtmlEntities,
   formatUnixTimestamp,
   type DownloadResult,
   type DownloadContext,
@@ -352,7 +351,7 @@ function extractMediaItems(
   post: RedditPost,
   stringHelpers: StringHelpers
 ): MediaItem[] {
-  const { sanitizeFilename, truncateTitle, filenameFromUrl, getMimeExtension } = stringHelpers;
+  const { sanitizeFilename, truncateTitle, filenameFromUrl, getMimeExtension, decodeHtmlEntities, buildFilename } = stringHelpers;
   // Handle crossposts — the original post has the actual media
   const sourcePost =
     post.crosspost_parent_list && post.crosspost_parent_list.length > 0
@@ -408,7 +407,7 @@ function extractMediaItems(
       const caption = captionMap.get(mediaId);
       let filename: string;
       if (caption) {
-        filename = `${sanitizeFilename(truncateTitle(caption, 80))}.${ext}`;
+        filename = buildFilename(caption, ext, 80);
       } else {
         filename = `Image ${index}.${ext}`;
       }

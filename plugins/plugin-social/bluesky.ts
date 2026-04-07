@@ -2,7 +2,6 @@ import path from "path";
 import fs from "fs";
 
 import {
-  decodeHtmlEntities,
   type DownloadResult,
   type DownloadContext,
   type PluginLogger,
@@ -331,7 +330,7 @@ function extractBlueskyMediaItems(
   post: BlueskyPost,
   stringHelpers: StringHelpers
 ): MediaItem[] {
-  const { sanitizeFilename, truncateTitle } = stringHelpers;
+  const { buildFilename } = stringHelpers;
   const embed = post.embed;
   if (!embed) return [];
 
@@ -362,7 +361,7 @@ function extractBlueskyMediaItems(
 
         const altName = img.alt?.trim();
         const filename = altName
-          ? `${sanitizeFilename(truncateTitle(altName, 60))}.${ext}`
+          ? buildFilename(altName, ext, 60)
           : `Image ${index}.${ext}`;
 
         items.push({ url, filename });

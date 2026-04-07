@@ -5,6 +5,8 @@
 ### Changed
 
 - Replace inline type definitions in `shared.ts` with imports from core `plugin-api.d.ts`
+- Replace local `decodeHtmlEntities()` with `helpers.string.decodeHtmlEntities()` from core
+- Replace `sanitizeFilename(truncateTitle(...))` patterns with `helpers.string.buildFilename()` in reddit.ts and bluesky.ts
 - Split monolithic `index.ts` (3275 lines) into separate files per platform
   - `shared.ts` — Type definitions and shared utilities (`decodeHtmlEntities`, `formatUnixTimestamp`)
   - `reddit.ts` — All Reddit-specific code (URL parsing, API client, media extraction, NFO, download handlers)

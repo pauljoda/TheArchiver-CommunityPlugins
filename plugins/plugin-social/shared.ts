@@ -1,5 +1,3 @@
-import path from "path";
-import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -329,16 +327,6 @@ export interface ParsedTwitterUrl {
 // =============================================================================
 // Shared Utilities
 // =============================================================================
-
-export function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&#x27;/g, "'");
-}
 
 export function formatUnixTimestamp(utc: number): string {
   return new Date(utc * 1000).toISOString();
