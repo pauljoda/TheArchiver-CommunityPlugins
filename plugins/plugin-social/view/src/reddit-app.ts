@@ -28,12 +28,6 @@ interface ViewInfo {
 
 type ViewCleanup = () => void;
 
-/** Internal state when viewing a post inline over the timeline */
-interface InlinePostState {
-  postPath: string;
-  scrollTop: number;
-}
-
 async function detectViewInfo(
   api: PluginViewAPI,
   dirPath: string,
@@ -158,20 +152,18 @@ export class RedditApp {
   private viewCleanup?: ViewCleanup;
   private readonly cache = new SocialViewCache();
 
-  /** When set, we're showing an inline post detail over the hidden timeline */
-  private inlinePost: InlinePostState | null = null;
+  /** When non-null, we're showing an inline post detail over the hidden timeline */
+  private inlinePostPath: string | null = null;
   /** The timeline container (hidden when viewing a post) */
   private timelineEl: HTMLElement | null = null;
   /** The breadcrumb for the timeline view */
   private timelineBreadcrumb: HTMLElement | null = null;
   /** Container for the inline post detail */
   private postOverlay: HTMLElement | null = null;
-  /** Saved scroll position from the timeline (survives clearing inlinePost) */
+  /** Saved scroll position from the timeline */
   private savedScrollTop = 0;
   /** The directory path the current view was rendered for */
   private currentDirPath: string | null = null;
-  /** Bound popstate handler */
-  private popstateHandler: ((e: PopStateEvent) => void) | null = null;
 
   constructor(container: HTMLElement, api: PluginViewAPI) {
     this.container = container;
@@ -184,51 +176,7 @@ export class RedditApp {
     this.contentEl = document.createElement("div");
     this.container.appendChild(this.contentEl);
 
-    // Listen for browser back/forward to pop out of inline post
-    this.popstateHandler = () => {
-      if (this.inlinePost) {
-        this.inlinePost = null;
-        this.render();
-      }
-    };
-    window.addEventListener("popstate", this.popstateHandler);
-
-    this.render();
-  }
-
-  /** Top-level render — checks if we're in inline post mode or directory mode */
-  private async render(): Promise<void> {
-    if (this.inlinePost) {
-      await this.renderInlinePost(this.inlinePost);
-    } else {
-      await this.restoreOrRenderDirectory();
-    }
-  }
-
-  /** Either restore a cached timeline or render the directory from scratch */
-  private async restoreOrRenderDirectory(): Promise<void> {
-    // If we have a post overlay, remove it
-    if (this.postOverlay) {
-      this.postOverlay.remove();
-      this.postOverlay = null;
-    }
-
-    // If we have a cached timeline, show it and restore scroll
-    if (this.timelineEl) {
-      this.timelineEl.style.display = "";
-      if (this.timelineBreadcrumb) {
-        this.timelineBreadcrumb.style.display = "";
-      }
-      const scrollParent = findScrollParent(this.contentEl);
-      const scrollTarget = this.savedScrollTop;
-      requestAnimationFrame(() => {
-        scrollParent.scrollTop = scrollTarget;
-      });
-      return;
-    }
-
-    // No cache — render from scratch
-    await this.renderDirectory();
+    this.renderDirectory();
   }
 
   /** Render the current directory view (root / post-list / post) */
@@ -238,13 +186,18 @@ export class RedditApp {
     this.viewCleanup = undefined;
     this.timelineEl = null;
     this.timelineBreadcrumb = null;
+    this.inlinePostPath = null;
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
 
     this.contentEl.innerHTML = "";
 
     const { currentPath, trackedDirectory } = this.api;
     this.currentDirPath = currentPath.replace(/\/+$/, "");
     const tracked = trackedDirectory.replace(/\/+$/, "");
-    const current = currentPath.replace(/\/+$/, "");
+    const current = this.currentDirPath;
     const isRoot = current === tracked;
 
     let breadcrumbEl: HTMLElement | null = null;
@@ -327,19 +280,38 @@ export class RedditApp {
   private pushPost(postPath: string): void {
     const scrollParent = findScrollParent(this.contentEl);
     this.savedScrollTop = scrollParent.scrollTop;
-    this.inlinePost = {
-      postPath,
-      scrollTop: this.savedScrollTop,
-    };
-    // Push a history entry so browser back button pops us out
-    history.pushState({ socialInlinePost: true }, "");
-    this.render();
+    this.inlinePostPath = postPath;
+    this.showInlinePost(postPath);
+  }
+
+  /** Pop back to the timeline — restores scroll position */
+  private popPost(): void {
+    this.inlinePostPath = null;
+
+    // Remove post overlay
+    if (this.postOverlay) {
+      this.postOverlay.remove();
+      this.postOverlay = null;
+    }
+
+    // Show cached timeline
+    if (this.timelineEl) {
+      this.timelineEl.style.display = "";
+    }
+    if (this.timelineBreadcrumb) {
+      this.timelineBreadcrumb.style.display = "";
+    }
+
+    // Restore scroll position
+    const scrollParent = findScrollParent(this.contentEl);
+    const target = this.savedScrollTop;
+    requestAnimationFrame(() => {
+      scrollParent.scrollTop = target;
+    });
   }
 
   /** Render the inline post detail over the hidden timeline */
-  private async renderInlinePost(state: InlinePostState): Promise<void> {
-    const { postPath } = state;
-
+  private async showInlinePost(postPath: string): Promise<void> {
     // Hide the timeline
     if (this.timelineEl) {
       this.timelineEl.style.display = "none";
@@ -356,16 +328,12 @@ export class RedditApp {
     // Build post overlay
     this.postOverlay = document.createElement("div");
 
-    // Breadcrumb — back link pops the inline state
+    // Breadcrumb — clicking any segment pops back to the timeline
     const { trackedDirectory } = this.api;
     const breadcrumb = renderBreadcrumb(
       postPath,
       trackedDirectory,
-      (path) => {
-        // Any breadcrumb click pops back to the timeline
-        this.inlinePost = null;
-        history.back();
-      }
+      () => this.popPost()
     );
     this.postOverlay.appendChild(breadcrumb);
 
@@ -380,6 +348,9 @@ export class RedditApp {
     // Detect platform and render
     const entries = await this.api.fetchFiles(postPath);
     const viewInfo = await detectViewInfo(this.api, postPath, entries);
+
+    // Bail if user already popped back while we were loading
+    if (this.inlinePostPath !== postPath) return;
 
     if (viewInfo.mode === "post") {
       if (viewInfo.platform === "bluesky") {
@@ -396,36 +367,24 @@ export class RedditApp {
     this.api = this.cache.wrap(api);
     const newDir = newPath.replace(/\/+$/, "");
 
-    // Same path — host is re-emitting after our pushState/back.
-    // The popstate handler already restored the view, so skip.
+    // Same path — skip (host re-emitting, or no real change)
     if (newDir === this.currentDirPath) {
       return;
     }
 
     // Actually different path — full re-render
-    this.inlinePost = null;
-    this.timelineEl = null;
-    this.timelineBreadcrumb = null;
-    if (this.postOverlay) {
-      this.postOverlay.remove();
-      this.postOverlay = null;
-    }
     this.renderDirectory();
   }
 
   destroy(): void {
     this.viewCleanup?.();
     this.viewCleanup = undefined;
-    this.inlinePost = null;
+    this.inlinePostPath = null;
     this.timelineEl = null;
     this.timelineBreadcrumb = null;
     if (this.postOverlay) {
       this.postOverlay.remove();
       this.postOverlay = null;
-    }
-    if (this.popstateHandler) {
-      window.removeEventListener("popstate", this.popstateHandler);
-      this.popstateHandler = null;
     }
     this.cache.clear();
     this.container.classList.remove("reddit-view");

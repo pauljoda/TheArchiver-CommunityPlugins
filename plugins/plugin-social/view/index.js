@@ -5022,20 +5022,18 @@
       __publicField(this, "contentEl");
       __publicField(this, "viewCleanup");
       __publicField(this, "cache", new SocialViewCache());
-      /** When set, we're showing an inline post detail over the hidden timeline */
-      __publicField(this, "inlinePost", null);
+      /** When non-null, we're showing an inline post detail over the hidden timeline */
+      __publicField(this, "inlinePostPath", null);
       /** The timeline container (hidden when viewing a post) */
       __publicField(this, "timelineEl", null);
       /** The breadcrumb for the timeline view */
       __publicField(this, "timelineBreadcrumb", null);
       /** Container for the inline post detail */
       __publicField(this, "postOverlay", null);
-      /** Saved scroll position from the timeline (survives clearing inlinePost) */
+      /** Saved scroll position from the timeline */
       __publicField(this, "savedScrollTop", 0);
       /** The directory path the current view was rendered for */
       __publicField(this, "currentDirPath", null);
-      /** Bound popstate handler */
-      __publicField(this, "popstateHandler", null);
       this.container = container;
       this.api = this.cache.wrap(api);
       this.container.innerHTML = "";
@@ -5043,42 +5041,7 @@
       injectStyles(this.container);
       this.contentEl = document.createElement("div");
       this.container.appendChild(this.contentEl);
-      this.popstateHandler = () => {
-        if (this.inlinePost) {
-          this.inlinePost = null;
-          this.render();
-        }
-      };
-      window.addEventListener("popstate", this.popstateHandler);
-      this.render();
-    }
-    /** Top-level render — checks if we're in inline post mode or directory mode */
-    async render() {
-      if (this.inlinePost) {
-        await this.renderInlinePost(this.inlinePost);
-      } else {
-        await this.restoreOrRenderDirectory();
-      }
-    }
-    /** Either restore a cached timeline or render the directory from scratch */
-    async restoreOrRenderDirectory() {
-      if (this.postOverlay) {
-        this.postOverlay.remove();
-        this.postOverlay = null;
-      }
-      if (this.timelineEl) {
-        this.timelineEl.style.display = "";
-        if (this.timelineBreadcrumb) {
-          this.timelineBreadcrumb.style.display = "";
-        }
-        const scrollParent = findScrollParent(this.contentEl);
-        const scrollTarget = this.savedScrollTop;
-        requestAnimationFrame(() => {
-          scrollParent.scrollTop = scrollTarget;
-        });
-        return;
-      }
-      await this.renderDirectory();
+      this.renderDirectory();
     }
     /** Render the current directory view (root / post-list / post) */
     async renderDirectory() {
@@ -5086,11 +5049,16 @@
       this.viewCleanup = void 0;
       this.timelineEl = null;
       this.timelineBreadcrumb = null;
+      this.inlinePostPath = null;
+      if (this.postOverlay) {
+        this.postOverlay.remove();
+        this.postOverlay = null;
+      }
       this.contentEl.innerHTML = "";
       const { currentPath, trackedDirectory } = this.api;
       this.currentDirPath = currentPath.replace(/\/+$/, "");
       const tracked = trackedDirectory.replace(/\/+$/, "");
-      const current = currentPath.replace(/\/+$/, "");
+      const current = this.currentDirPath;
       const isRoot = current === tracked;
       let breadcrumbEl = null;
       if (!isRoot) {
@@ -5161,16 +5129,30 @@
     pushPost(postPath) {
       const scrollParent = findScrollParent(this.contentEl);
       this.savedScrollTop = scrollParent.scrollTop;
-      this.inlinePost = {
-        postPath,
-        scrollTop: this.savedScrollTop
-      };
-      history.pushState({ socialInlinePost: true }, "");
-      this.render();
+      this.inlinePostPath = postPath;
+      this.showInlinePost(postPath);
+    }
+    /** Pop back to the timeline — restores scroll position */
+    popPost() {
+      this.inlinePostPath = null;
+      if (this.postOverlay) {
+        this.postOverlay.remove();
+        this.postOverlay = null;
+      }
+      if (this.timelineEl) {
+        this.timelineEl.style.display = "";
+      }
+      if (this.timelineBreadcrumb) {
+        this.timelineBreadcrumb.style.display = "";
+      }
+      const scrollParent = findScrollParent(this.contentEl);
+      const target = this.savedScrollTop;
+      requestAnimationFrame(() => {
+        scrollParent.scrollTop = target;
+      });
     }
     /** Render the inline post detail over the hidden timeline */
-    async renderInlinePost(state) {
-      const { postPath } = state;
+    async showInlinePost(postPath) {
       if (this.timelineEl) {
         this.timelineEl.style.display = "none";
       }
@@ -5185,10 +5167,7 @@
       const breadcrumb = renderBreadcrumb(
         postPath,
         trackedDirectory,
-        (path) => {
-          this.inlinePost = null;
-          history.back();
-        }
+        () => this.popPost()
       );
       this.postOverlay.appendChild(breadcrumb);
       const postContainer = document.createElement("div");
@@ -5198,6 +5177,7 @@
       scrollParent.scrollTop = 0;
       const entries = await this.api.fetchFiles(postPath);
       const viewInfo = await detectViewInfo(this.api, postPath, entries);
+      if (this.inlinePostPath !== postPath) return;
       if (viewInfo.mode === "post") {
         if (viewInfo.platform === "bluesky") {
           await renderBlueskyPostDetail(postContainer, this.api, postPath);
@@ -5214,28 +5194,17 @@
       if (newDir === this.currentDirPath) {
         return;
       }
-      this.inlinePost = null;
-      this.timelineEl = null;
-      this.timelineBreadcrumb = null;
-      if (this.postOverlay) {
-        this.postOverlay.remove();
-        this.postOverlay = null;
-      }
       this.renderDirectory();
     }
     destroy() {
       this.viewCleanup?.();
       this.viewCleanup = void 0;
-      this.inlinePost = null;
+      this.inlinePostPath = null;
       this.timelineEl = null;
       this.timelineBreadcrumb = null;
       if (this.postOverlay) {
         this.postOverlay.remove();
         this.postOverlay = null;
-      }
-      if (this.popstateHandler) {
-        window.removeEventListener("popstate", this.popstateHandler);
-        this.popstateHandler = null;
       }
       this.cache.clear();
       this.container.classList.remove("reddit-view");
