@@ -5,6 +5,7 @@
 ### Changed
 
 - Replace inline type definitions with imports from core `plugin-api.d.ts`
+- Replace manual `Promise.all(chunk.map(...))` batching with `helpers.io.downloadFiles()` for concurrent downloads
 
 ## 2.0.1
 

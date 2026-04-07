@@ -134,33 +134,42 @@ async function downloadDirectory(
       return { success: false, message: `No downloadable files found on ${url}` };
     }
 
-    // Download files with concurrency control
-    const totalBatches = Math.ceil(files.length / maxThreads);
-    for (let i = 0; i < files.length; i += maxThreads) {
-      const batchNum = Math.floor(i / maxThreads) + 1;
-      const chunk = files.slice(i, i + maxThreads);
-      logger.info(`Downloading batch ${batchNum}/${totalBatches} (${chunk.length} files)`);
-      await Promise.all(
-        chunk.map(async (fileUrl) => {
-          try {
-            const fileName = decodeURIComponent(
-              path.basename(new URL(fileUrl).pathname)
-            );
-            const localPath = path.join(downloadDir, fileName);
+    // Build download list, resolving auth redirects and skipping existing files
+    const headers: Record<string, string> = {};
+    if (credentials) {
+      Object.assign(headers, authHeaders(credentials));
+    }
 
-            if (await helpers.io.fileExists(localPath)) {
-              logger.info(`Skipping existing: ${fileName}`);
-              return;
-            }
-
-            logger.info(`Downloading: ${fileName}`);
-            await downloadFileWithAuth(fileUrl, localPath, credentials, helpers, logger);
-            logger.info(`Completed: ${fileName}`);
-          } catch (e) {
-            logger.error(`Failed: ${fileUrl} - ${(e as Error).message}`);
-          }
-        })
+    const downloads: Array<{ url: string; outputPath: string }> = [];
+    for (const fileUrl of files) {
+      const fileName = decodeURIComponent(
+        path.basename(new URL(fileUrl).pathname)
       );
+      const localPath = path.join(downloadDir, fileName);
+
+      if (await helpers.io.fileExists(localPath)) {
+        logger.info(`Skipping existing: ${fileName}`);
+        continue;
+      }
+
+      // Resolve redirect (archive.org redirects to S3 for file content)
+      const checkRes = await fetch(fileUrl, { headers, redirect: "manual" });
+      const finalUrl =
+        checkRes.status >= 300 && checkRes.status < 400
+          ? checkRes.headers.get("location") || fileUrl
+          : fileUrl;
+
+      if (finalUrl !== fileUrl) {
+        logger.info(`Resolved redirect for ${fileName}`);
+      }
+
+      downloads.push({ url: finalUrl, outputPath: localPath });
+    }
+
+    if (downloads.length > 0) {
+      logger.info(`Downloading ${downloads.length} files with concurrency ${maxThreads}`);
+      await helpers.io.downloadFiles(downloads, maxThreads, { headers });
+      logger.info(`Completed ${downloads.length} file downloads`);
     }
 
     // Recurse into subdirectories
