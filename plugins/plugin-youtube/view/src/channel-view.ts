@@ -16,9 +16,10 @@ const VIDEO_RE = /\.(mkv|mp4|webm|m4v|avi|mov|flv|wmv)$/i;
 
 /**
  * Render the channel/playlist view: a grid of video cards.
- * Handles two structures:
- * 1. Directory per video: each child dir contains a video + metadata
- * 2. Flat: videos sit directly in the current directory
+ * Handles three structures:
+ * 1. Flat: videos sit directly in the current directory
+ * 2. Directory per video: each child dir contains a video + metadata
+ * 3. Mixed: both direct video files and subdirectories exist
  */
 export async function renderChannelView(
   container: HTMLElement,
@@ -31,9 +32,6 @@ export async function renderChannelView(
   const dirs = entries.filter((e) => e.isDirectory);
   const files = entries.filter((e) => !e.isDirectory);
   const directVideos = files.filter((f) => VIDEO_RE.test(f.name));
-
-  // Determine structure: subdirectories with videos, or flat video files
-  const isFlat = dirs.length === 0 && directVideos.length > 0;
 
   if (dirs.length === 0 && directVideos.length === 0) {
     container.innerHTML = `
@@ -49,11 +47,13 @@ export async function renderChannelView(
   grid.className = "yt-grid";
   container.appendChild(grid);
 
-  if (isFlat) {
-    // Flat structure: render cards for each video file directly
+  // Always render direct video files first when present
+  if (directVideos.length > 0) {
     await renderFlatVideoCards(grid, api, currentPath, files, directVideos, navigate, showVideo);
-  } else {
-    // Directory-per-video structure
+  }
+
+  // Also render subdirectory-based cards when subdirectories exist
+  if (dirs.length > 0) {
     await renderDirVideoCards(grid, api, dirs, navigate);
   }
 }
@@ -121,6 +121,44 @@ async function renderFlatVideoCards(
   }
 }
 
+/**
+ * Recursively search for a video file and its companions within a directory.
+ * Tries direct children first, then digs one level into subdirectories.
+ * Returns the files list that contains the video so callers can find metadata.
+ */
+async function findVideoInDir(
+  api: PluginViewAPI,
+  dirPath: string,
+  depth = 0
+): Promise<{ videoFile: FileEntry; allFiles: FileEntry[] } | null> {
+  const MAX_DEPTH = 3;
+  if (depth > MAX_DEPTH) return null;
+
+  let entries: FileEntry[];
+  try {
+    entries = await api.fetchFiles(dirPath);
+  } catch {
+    return null;
+  }
+
+  const files = entries.filter((e) => !e.isDirectory);
+  const videoFile = findVideoFile(files);
+  if (videoFile) {
+    return { videoFile, allFiles: files };
+  }
+
+  // No direct video — search subdirectories
+  const subdirs = entries.filter(
+    (e) => e.isDirectory && !e.name.endsWith(".trickplay")
+  );
+  for (const sub of subdirs) {
+    const result = await findVideoInDir(api, sub.path, depth + 1);
+    if (result) return result;
+  }
+
+  return null;
+}
+
 async function renderDirVideoCards(
   grid: HTMLElement,
   api: PluginViewAPI,
@@ -130,14 +168,12 @@ async function renderDirVideoCards(
   // Load video info for each directory in parallel
   const cardPromises = dirs.map(async (dir) => {
     try {
-      const children = await api.fetchFiles(dir.path);
-      const childFiles = children.filter((e) => !e.isDirectory);
+      const result = await findVideoInDir(api, dir.path);
+      if (!result) return null;
 
-      const videoEntry = findVideoFile(childFiles);
-      if (!videoEntry) return null;
-
-      const infoEntry = findInfoJson(childFiles);
-      const thumbEntry = findThumbnail(childFiles);
+      const { videoFile, allFiles } = result;
+      const infoEntry = findInfoJson(allFiles);
+      const thumbEntry = findThumbnail(allFiles);
 
       let info = null;
       if (infoEntry) {
@@ -146,8 +182,8 @@ async function renderDirVideoCards(
 
       return {
         path: dir.path,
-        stem: stem(videoEntry.name),
-        videoFile: videoEntry.path,
+        stem: stem(videoFile.name),
+        videoFile: videoFile.path,
         thumbnail: thumbEntry?.path,
         info,
       } as VideoInfo;

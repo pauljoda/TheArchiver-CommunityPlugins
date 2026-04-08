@@ -776,7 +776,6 @@
     const dirs = entries.filter((e) => e.isDirectory);
     const files = entries.filter((e) => !e.isDirectory);
     const directVideos = files.filter((f) => VIDEO_RE2.test(f.name));
-    const isFlat = dirs.length === 0 && directVideos.length > 0;
     if (dirs.length === 0 && directVideos.length === 0) {
       container.innerHTML = `
       <div class="yt-empty">
@@ -789,9 +788,10 @@
     const grid = document.createElement("div");
     grid.className = "yt-grid";
     container.appendChild(grid);
-    if (isFlat) {
+    if (directVideos.length > 0) {
       await renderFlatVideoCards(grid, api, currentPath, files, directVideos, navigate, showVideo);
-    } else {
+    }
+    if (dirs.length > 0) {
       await renderDirVideoCards(grid, api, dirs, navigate);
     }
   }
@@ -837,23 +837,45 @@
       grid.appendChild(card);
     }
   }
+  async function findVideoInDir(api, dirPath, depth = 0) {
+    const MAX_DEPTH = 3;
+    if (depth > MAX_DEPTH) return null;
+    let entries;
+    try {
+      entries = await api.fetchFiles(dirPath);
+    } catch {
+      return null;
+    }
+    const files = entries.filter((e) => !e.isDirectory);
+    const videoFile = findVideoFile(files);
+    if (videoFile) {
+      return { videoFile, allFiles: files };
+    }
+    const subdirs = entries.filter(
+      (e) => e.isDirectory && !e.name.endsWith(".trickplay")
+    );
+    for (const sub of subdirs) {
+      const result = await findVideoInDir(api, sub.path, depth + 1);
+      if (result) return result;
+    }
+    return null;
+  }
   async function renderDirVideoCards(grid, api, dirs, navigate) {
     const cardPromises = dirs.map(async (dir) => {
       try {
-        const children = await api.fetchFiles(dir.path);
-        const childFiles = children.filter((e) => !e.isDirectory);
-        const videoEntry = findVideoFile(childFiles);
-        if (!videoEntry) return null;
-        const infoEntry = findInfoJson(childFiles);
-        const thumbEntry = findThumbnail(childFiles);
+        const result = await findVideoInDir(api, dir.path);
+        if (!result) return null;
+        const { videoFile, allFiles } = result;
+        const infoEntry = findInfoJson(allFiles);
+        const thumbEntry = findThumbnail(allFiles);
         let info = null;
         if (infoEntry) {
           info = await loadInfoJson(api, infoEntry.path);
         }
         return {
           path: dir.path,
-          stem: stem(videoEntry.name),
-          videoFile: videoEntry.path,
+          stem: stem(videoFile.name),
+          videoFile: videoFile.path,
           thumbnail: thumbEntry?.path,
           info
         };

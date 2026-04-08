@@ -759,7 +759,7 @@
   ],
   "settings": [
     {
-      "key": "library_folder",
+      "key": "save_directory",
       "type": "string",
       "label": "Default Library Folder",
       "description": "Default folder within your downloads directory for downloaded content. Used when no per-site override matches.",

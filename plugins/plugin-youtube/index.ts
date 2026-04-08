@@ -275,7 +275,7 @@ const plugin = definePlugin({
     logger.info(`Starting yt-dlp download for: ${url}`);
 
     // ── Read settings ──
-    const libraryFolder = settings.get("library_folder") || "yt-dlp";
+    const libraryFolder = settings.get("save_directory") || "yt-dlp";
     const quality = settings.get("quality") || "best";
     const audioOnly = settings.get("audio_only") === "true";
     const embedMetadata = settings.get("embed_metadata") !== "false"; // default true

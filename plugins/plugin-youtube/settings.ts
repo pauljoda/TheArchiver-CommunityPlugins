@@ -23,7 +23,7 @@ interface PluginSettingDefinition {
 
 export const pluginSettings: PluginSettingDefinition[] = [
   {
-    key: "library_folder",
+    key: "save_directory",
     type: "string",
     label: "Default Library Folder",
     description:
