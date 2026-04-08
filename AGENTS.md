@@ -42,10 +42,11 @@ When adding a new plugin, follow this convention and add the corresponding scrip
 
 Each plugin maintains its own semantic version independently. The root `package.json` also has its own version for the monorepo.
 
-- **`manifest.json`** is the source of truth for plugin version (used by the app's update detection)
-- **`package.json`** version must stay in sync with `manifest.json`
+- **`manifest.json`** in each plugin directory is the source of truth for that plugin’s version (it is what gets embedded in the ZIP and what `plugins.json` reads)
+- **`package.json`** version in the same plugin folder must stay in sync with `manifest.json`
 - Follow [semver](https://semver.org/): MAJOR for breaking changes, MINOR for new features, PATCH for fixes
-- Bump the version in both `manifest.json` and `package.json` together when releasing
+- Bump the version in both places together when releasing
+- Plugins with **`manifest-gen.ts`** (e.g. `plugin-youtube`, `plugin-gallery-dl`): bump the `version` field in `manifest-gen.ts`, then run the plugin build so `manifest.json` is regenerated—do not hand-edit the generated `manifest.json`
 
 ## Scripts
 
@@ -80,9 +81,27 @@ All scripts are runnable from the repository root. Replace `{name}` with the plu
 Plugins are distributed as ZIP files via GitHub. The flow:
 
 1. `npm run distribute:{name}` builds, packages, copies the ZIP to `/dist/`, and regenerates `plugins.json`
-2. `plugins.json` is the registry manifest — the main app fetches it to list available community plugins
-3. Users install plugins from the app's plugin browser, which downloads the ZIP from the `baseUrl` + `downloadFile`
-4. Commit and push the updated `/dist/*.zip` and `plugins.json` to publish
+2. **`plugins.json` (repository root)** is the registry the main app actually fetches (default URL: `raw.githubusercontent.com/.../main/plugins.json`). It is **not** hand-edited: `scripts/generate-manifest.mjs` reads each `plugins/plugin-*/manifest.json` and writes the root `plugins.json` (including `id`, `version`, `downloadFile`, and `baseUrl` pointing at `/dist` on `main`).
+3. Users install or update from the in-app community browser, which downloads the ZIP from `baseUrl` + `downloadFile` (files under `/dist/` on `main`).
+4. Commit and push the updated plugin sources, `/dist/*.zip`, and root `plugins.json` so clients see new versions.
+
+### Publishing a plugin update (so TheArchiver shows “Update available”)
+
+The app compares the **version string** in root `plugins.json` for each entry to the installed plugin’s stored version. If they differ, the UI shows an update. For that to work, **both** the per-plugin manifest version **and** the regenerated root registry must change.
+
+1. **Bump the version** in the plugin:
+   - **Hand-maintained manifest** (`plugin-archive-org`, `plugin-social`): edit `plugins/plugin-{name}/manifest.json` and matching `package.json` version.
+   - **Generated manifest** (`plugin-youtube`, `plugin-gallery-dl`): edit `version` in `manifest-gen.ts` and `package.json`; the next build overwrites `manifest.json`.
+2. **From the monorepo root**, run **`npm run distribute:{name}`** (e.g. `distribute:youtube`). That script runs `npm install` in the plugin, `npm run package` (build + ZIP), copies `plugins/plugin-{name}/dist/plugin-{name}.zip` to **`/dist/`**, then runs **`npm run generate-manifest`** to refresh root **`plugins.json`** with the new version.
+3. **Commit everything that changed**, including at minimum:
+   - Plugin folder: `manifest.json` (or `manifest-gen.ts` + regenerated `manifest.json`), `package.json`, and `package-lock.json` if it changed
+   - **`dist/plugin-{name}.zip`**
+   - **Root `plugins.json`**
+4. **Push to `main`**. The app’s default registry URL tracks `main`; other branches will not be seen unless `COMMUNITY_PLUGINS_URL` is overridden.
+
+**Common mistakes:** bumping only the ZIP or only the plugin `manifest.json` without running **`distribute:{name}`** (or `generate-manifest`) leaves **`plugins.json`** stale, so the app never sees a new version. Relying on a hand-edited root `plugins.json` without updating the plugin `manifest.json` will be overwritten the next time someone runs `generate-manifest`.
+
+**Note:** GitHub `raw` URLs can lag by a short time after push; the app fetches the registry with `cache: no-store`, but a refresh or retry may be needed immediately after publishing.
 
 ## Local Development
 
@@ -97,9 +116,11 @@ The symlinks are local-only and not tracked by git in either repository.
 
 ## Current Plugins
 
+Versions below mirror `plugins.json`; bump them when you release.
+
 | Plugin | Version | Description |
 |---|---|---|
-| `plugin-archive-org` | 2.0.0 | Download content from Archive.org |
-| `plugin-gallery-dl` | 1.0.0 | Multi-site image/media downloader (400+ sites) |
-| `plugin-social` | 1.1.0 | Reddit, Bluesky, Twitter/X downloader with Social Browser view |
-| `plugin-youtube` | 1.0.0 | yt-dlp wrapper for YouTube, Twitch, TikTok, and 1800+ sites |
+| `plugin-archive-org` | 2.0.2 | Download content from Archive.org |
+| `plugin-gallery-dl` | 2.0.1 | Multi-site image/media downloader (400+ sites) |
+| `plugin-social` | 1.5.5 | Reddit, Bluesky, Twitter/X downloader with Social Browser view |
+| `plugin-youtube` | 2.1.1 | yt-dlp wrapper for YouTube, Twitch, TikTok, and 1800+ sites |
