@@ -27,6 +27,27 @@ export interface PluginViewRegistration {
   onPathChange?: (newPath: string, api: PluginViewAPI) => void;
 }
 
+/**
+ * Change-tracking status for a post or comment. Matches the type used
+ * server-side in plugin-social/shared.ts. Populated by the diff/merge step
+ * in the Reddit downloader when a prior snapshot exists.
+ */
+export type ChangeStatus = "new" | "edited" | "deleted";
+
+/** A single prior version of a post captured during an edit. */
+export interface PostEditHistoryEntry {
+  timestamp: string; // ISO-dash, e.g. "2026-04-09T14-30-22Z"
+  title: string;
+  selftext: string;
+}
+
+/** A single prior version of a comment body captured during an edit. */
+export interface CommentEditHistoryEntry {
+  timestamp: string; // ISO-dash
+  body: string;
+  body_html?: string;
+}
+
 /** Parsed Post.nfo metadata */
 export interface PostMetadata {
   title: string;
@@ -47,10 +68,26 @@ export interface PostMetadata {
   postHint?: string;
   over18?: boolean;
   spoiler?: boolean;
+  /** Change-tracking annotations (see reddit change-tracker). */
+  changeStatus?: ChangeStatus[];
+  editHistory?: PostEditHistoryEntry[];
+  /**
+   * ISO timestamp of when this post was first archived from the user's
+   * upvoted listing. Present only for posts discovered via /user/<name>/upvoted.
+   * Combined with `upvotedPosition` it gives a stable sort key that
+   * approximates "when the user upvoted this".
+   */
+  upvotedArchivedAt?: string;
+  /**
+   * 0-indexed position within the upvoted listing at first archive time.
+   * 0 = most recently upvoted at the time of that archive run.
+   */
+  upvotedPosition?: number;
 }
 
 /** A single comment from Comments.json (matches CleanComment from plugin) */
 export interface Comment {
+  id?: string;
   author: string;
   body: string;
   score: number;
@@ -62,6 +99,9 @@ export interface Comment {
   author_flair_text?: string | null;
   replies?: Comment[];
   media?: Record<string, string>; // maps media key (e.g. "giphy:ID") to local filename
+  /** Change-tracking annotations (see reddit change-tracker). */
+  changeStatus?: ChangeStatus[];
+  editHistory?: CommentEditHistoryEntry[];
 }
 
 /** Subreddit card info for root view */

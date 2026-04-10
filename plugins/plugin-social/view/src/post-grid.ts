@@ -1,18 +1,11 @@
 import type { PluginViewAPI, PostInfo } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
+import { isImageFile, isVideoFile } from "../../../_shared/view/media-player";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
-}
-
-function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-}
-
-function isVideoFile(name: string): boolean {
-  return /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
 }
 
 function formatDate(dateStr: string): string {

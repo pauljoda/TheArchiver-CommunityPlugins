@@ -3,6 +3,7 @@ import { fetchBlueskyPostMetadata } from "./nfo-parser";
 import { renderBlueskyRichText } from "./bluesky-richtext";
 import { LazyFeedCard } from "./lazy-feed-card";
 import { mapLimit } from "./async-utils";
+import { isImageFile } from "../../../_shared/view/media-player";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -42,10 +43,6 @@ function formatCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
-}
-
-function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
 }
 
 // SVG icons for engagement metrics

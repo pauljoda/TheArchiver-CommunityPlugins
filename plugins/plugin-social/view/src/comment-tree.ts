@@ -1,4 +1,4 @@
-import type { Comment } from "./types";
+import type { Comment, ChangeStatus, CommentEditHistoryEntry } from "./types";
 import { renderMarkdown } from "./markdown";
 
 type SortMode = "top" | "newest";
@@ -36,6 +36,93 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+// ─── Change-tracking chips & edit history ───────────────────────────────────
+
+const CHIP_LABELS: Record<ChangeStatus, string> = {
+  new: "NEW",
+  edited: "EDITED",
+  deleted: "DELETED",
+};
+
+/** Stacking order for chips when a comment has multiple statuses. */
+const CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted"];
+
+function makeChangeChip(status: ChangeStatus): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = `reddit-chip reddit-chip--${status}`;
+  chip.textContent = CHIP_LABELS[status];
+  return chip;
+}
+
+/**
+ * Convert an ISO-dash snapshot timestamp (e.g. "2026-04-09T14-30-22Z") into
+ * a human-friendly string. Falls back to the raw input on any parse failure.
+ */
+function formatSnapshotTimestamp(isoDash: string): string {
+  if (!isoDash) return "";
+  // Reinflate the dashes back into a parseable ISO string. Date portion stays
+  // the same; time portion "14-30-22Z" → "14:30:22Z".
+  const iso = isoDash.replace(
+    /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/,
+    "$1T$2:$3:$4Z"
+  );
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return isoDash;
+  try {
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoDash;
+  }
+}
+
+/**
+ * Render a <details> accordion listing every prior body we've recorded for
+ * this comment. Entries are shown newest-first so the most recent previous
+ * version is immediately visible when expanded.
+ */
+function renderCommentEditHistory(
+  entries: CommentEditHistoryEntry[]
+): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "reddit-edit-history";
+
+  const summary = document.createElement("summary");
+  summary.className = "reddit-edit-history__summary";
+  const n = entries.length;
+  summary.textContent = `Edit history (${n} version${n === 1 ? "" : "s"})`;
+  details.appendChild(summary);
+
+  const entriesEl = document.createElement("div");
+  entriesEl.className = "reddit-edit-history__entries";
+  // Newest prior version first.
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    const entryEl = document.createElement("div");
+    entryEl.className = "reddit-edit-history__entry";
+
+    const ts = document.createElement("div");
+    ts.className = "reddit-edit-history__timestamp";
+    ts.textContent = formatSnapshotTimestamp(entry.timestamp);
+    entryEl.appendChild(ts);
+
+    const body = document.createElement("div");
+    body.className = "reddit-edit-history__body";
+    body.innerHTML = renderMarkdown(entry.body || "");
+    entryEl.appendChild(body);
+
+    entriesEl.appendChild(entryEl);
+  }
+  details.appendChild(entriesEl);
+
+  return details;
+}
+
 /**
  * Render embedded media (giphy GIFs, images) from a comment's media map.
  * Strips the ![gif](giphy|...) / ![img](...) patterns from the body and
@@ -59,8 +146,19 @@ function buildCommentMedia(body: string, media: Record<string, string> | undefin
     } else if (key.startsWith("img:")) {
       const imgUrl = key.replace("img:", "");
       const escaped = imgUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
-      cleanBody = cleanBody.replace(pattern, "").trim();
+      // Prefer markdown-syntax strip. If the body didn't use markdown form
+      // (e.g. a plain preview.redd.it URL auto-linked by Reddit), strip the
+      // raw URL instead and collapse any surrounding whitespace/newlines.
+      const markdownPattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
+      const afterMarkdown = cleanBody.replace(markdownPattern, "");
+      if (afterMarkdown !== cleanBody) {
+        cleanBody = afterMarkdown.trim();
+      } else {
+        const rawPattern = new RegExp(`[ \\t]*${escaped}[ \\t]*`, "g");
+        cleanBody = cleanBody.replace(rawPattern, " ");
+        // Collapse runs of blank lines left behind, then trim.
+        cleanBody = cleanBody.replace(/\n{3,}/g, "\n\n").trim();
+      }
     }
 
     const img = document.createElement("img");
@@ -108,6 +206,15 @@ function renderComment(comment: Comment, postPath: string, depth: number, startC
 
   const el = document.createElement("div");
   el.className = "reddit-comment";
+
+  // Change-tracking background: deleted takes priority over new. Edited has
+  // no background — only a chip + edit-history dropdown.
+  const status = comment.changeStatus ?? [];
+  if (status.includes("deleted")) {
+    el.classList.add("reddit-comment--deleted");
+  } else if (status.includes("new")) {
+    el.classList.add("reddit-comment--new");
+  }
 
   // Header
   const header = document.createElement("div");
@@ -161,6 +268,13 @@ function renderComment(comment: Comment, postPath: string, depth: number, startC
     header.appendChild(dateEl);
   }
 
+  // Change-tracking chips — stack in a fixed order (new, edited, deleted).
+  for (const s of CHIP_ORDER) {
+    if (status.includes(s)) {
+      header.appendChild(makeChangeChip(s));
+    }
+  }
+
   el.appendChild(header);
 
   // Body
@@ -178,6 +292,11 @@ function renderComment(comment: Comment, postPath: string, depth: number, startC
       mediaContainer.appendChild(img);
     }
     el.appendChild(mediaContainer);
+  }
+
+  // Change-tracking edit history — collapsed by default, listed newest-first.
+  if (comment.editHistory && comment.editHistory.length > 0) {
+    el.appendChild(renderCommentEditHistory(comment.editHistory));
   }
 
   // Replies

@@ -1,7 +1,28 @@
-import type { PluginViewAPI, Comment } from "./types";
+import type {
+  PluginViewAPI,
+  Comment,
+  ChangeStatus,
+  PostEditHistoryEntry,
+} from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
 import { renderCommentTree } from "./comment-tree";
 import { renderMarkdown } from "./markdown";
+import {
+  isImageFile,
+  isVideoFile,
+  isGifLikeFile,
+} from "../../../_shared/view/media-player";
+
+/**
+ * Prefix-based detection for media files downloaded via gallery-dl from an
+ * external host that the Reddit post linked to (redgifs.com, imgur.com, etc.).
+ * Step 3 of the plan populates these; step 1 defines the detector so the
+ * file-scan bucketing is already in place when step 3 ships.
+ */
+const EXTERNAL_MEDIA_PREFIXES = ["redgifs_", "imgur_", "streamable_", "gfycat_"];
+function isExternalMediaFile(name: string): boolean {
+  return EXTERNAL_MEDIA_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -25,12 +46,88 @@ function formatDate(dateStr: string): string {
   }
 }
 
-function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
+// ─── Change-tracking (post-level) ───────────────────────────────────────────
+
+const POST_CHIP_LABELS: Record<ChangeStatus, string> = {
+  new: "NEW",
+  edited: "EDITED",
+  deleted: "DELETED",
+};
+const POST_CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted"];
+
+/** Render a chip for the post header. Returns an HTML string (inserted via innerHTML). */
+function postChipHtml(status: ChangeStatus): string {
+  return `<span class="reddit-chip reddit-chip--${status}">${POST_CHIP_LABELS[status]}</span>`;
 }
 
-function isVideoFile(name: string): boolean {
-  return /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
+/** Convert an ISO-dash snapshot timestamp to a human-readable string. */
+function formatSnapshotTimestamp(isoDash: string): string {
+  if (!isoDash) return "";
+  const iso = isoDash.replace(
+    /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/,
+    "$1T$2:$3:$4Z"
+  );
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return isoDash;
+  try {
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoDash;
+  }
+}
+
+/**
+ * Render the post's edit-history accordion. Post history entries carry
+ * both title and selftext — both are shown per entry since either can
+ * change independently. Entries are listed newest-first.
+ */
+function renderPostEditHistory(entries: PostEditHistoryEntry[]): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "reddit-edit-history";
+
+  const summary = document.createElement("summary");
+  summary.className = "reddit-edit-history__summary";
+  const n = entries.length;
+  summary.textContent = `Edit history (${n} version${n === 1 ? "" : "s"})`;
+  details.appendChild(summary);
+
+  const entriesEl = document.createElement("div");
+  entriesEl.className = "reddit-edit-history__entries";
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    const entryEl = document.createElement("div");
+    entryEl.className = "reddit-edit-history__entry";
+
+    const ts = document.createElement("div");
+    ts.className = "reddit-edit-history__timestamp";
+    ts.textContent = formatSnapshotTimestamp(entry.timestamp);
+    entryEl.appendChild(ts);
+
+    if (entry.title) {
+      const titleEl = document.createElement("div");
+      titleEl.className = "reddit-edit-history__title";
+      titleEl.textContent = entry.title;
+      entryEl.appendChild(titleEl);
+    }
+
+    if (entry.selftext) {
+      const body = document.createElement("div");
+      body.className = "reddit-edit-history__body";
+      body.innerHTML = renderMarkdown(entry.selftext);
+      entryEl.appendChild(body);
+    }
+
+    entriesEl.appendChild(entryEl);
+  }
+  details.appendChild(entriesEl);
+
+  return details;
 }
 
 async function parseComments(
@@ -116,8 +213,21 @@ export async function renderPostDetail(
     parseComments(api, postPath),
   ]);
 
-  const images = files.filter((f) => !f.isDirectory && isImageFile(f.name));
-  const videos = files.filter((f) => !f.isDirectory && isVideoFile(f.name));
+  // Split media files into two buckets:
+  //   - native: Reddit-hosted images/videos saved by reddit.ts
+  //       (`Image 1.jpg`, `Video.mp4`, `original_...mp4`, etc.)
+  //   - external: media downloaded via gallery-dl from a linked host
+  //       (`redgifs_<id>.mp4`, `imgur_<id>.jpg`, etc.) — populated in step 3
+  const mediaFiles = files.filter(
+    (f) => !f.isDirectory && (isImageFile(f.name) || isVideoFile(f.name))
+  );
+  const externalMedia = mediaFiles.filter((f) => isExternalMediaFile(f.name));
+  const images = mediaFiles.filter(
+    (f) => isImageFile(f.name) && !isExternalMediaFile(f.name)
+  );
+  const videos = mediaFiles.filter(
+    (f) => isVideoFile(f.name) && !isExternalMediaFile(f.name)
+  );
   const title = metadata?.title || postPath.split("/").pop() || "Post";
 
   const scoreClass = metadata
@@ -127,6 +237,15 @@ export async function renderPostDetail(
         ? "reddit-score-down"
         : "reddit-score-neutral"
     : "reddit-score-neutral";
+
+  // Post-level change-tracking background (deleted > new). Applied to the
+  // post wrapper below via the .reddit-post--{status} class.
+  const postStatus = metadata?.changeStatus ?? [];
+  const postWrapperClass = postStatus.includes("deleted")
+    ? " reddit-post--deleted"
+    : postStatus.includes("new")
+      ? " reddit-post--new"
+      : "";
 
   // Build header
   let headerHtml = `
@@ -149,6 +268,12 @@ export async function renderPostDetail(
     }
     if (metadata.numComments !== undefined) {
       headerHtml += `<span>${metadata.numComments.toLocaleString()} comments</span>`;
+    }
+    // Change-tracking chips stack after the existing metadata chips.
+    for (const s of POST_CHIP_ORDER) {
+      if (postStatus.includes(s)) {
+        headerHtml += postChipHtml(s);
+      }
     }
   }
   if (metadata?.url) {
@@ -186,7 +311,7 @@ export async function renderPostDetail(
   if (videos.length > 0) {
     videos.forEach((vid) => {
       const src = `/api/files/download?path=${encodeURIComponent(vid.path)}`;
-      const isGif = vid.name.includes(".gif.");
+      const isGif = isGifLikeFile(vid.name) || vid.name.includes(".gif.");
       videoHtml += `
         <video controls${isGif ? " autoplay loop muted playsinline" : ""} style="width:100%;max-height:70vh;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);">
           <source src="${src}" />
@@ -196,7 +321,32 @@ export async function renderPostDetail(
     });
   }
 
-  // Link post card — show when it's a link to an external domain
+  // Build external-media section — media downloaded via gallery-dl from a
+  // linked host (redgifs, imgur, streamable, gfycat). Rendered identically to
+  // native media but in its own bucket so we can suppress the link-card below
+  // when we've successfully archived the linked content.
+  let externalMediaHtml = "";
+  if (externalMedia.length > 0) {
+    externalMediaHtml = `<div class="reddit-external-media">`;
+    externalMedia.forEach((file) => {
+      const src = `/api/files/download?path=${encodeURIComponent(file.path)}`;
+      if (isVideoFile(file.name)) {
+        const isGif = isGifLikeFile(file.name) || file.name.includes(".gif.");
+        externalMediaHtml += `
+          <video controls${isGif ? " autoplay loop muted playsinline" : ""} style="width:100%;max-height:70vh;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);">
+            <source src="${src}" />
+            Your browser does not support video playback.
+          </video>
+        `;
+      } else if (isImageFile(file.name)) {
+        externalMediaHtml += `<img class="reddit-external-img" src="${src}" alt="${escapeHtml(file.name)}" loading="lazy" style="width:100%;max-height:70vh;object-fit:contain;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);" />`;
+      }
+    });
+    externalMediaHtml += `</div>`;
+  }
+
+  // Link post card — show when it's a link to an external domain AND we
+  // couldn't (or didn't) download the linked content inline.
   let linkCardHtml = "";
   const isLinkPost =
     metadata?.domain &&
@@ -206,7 +356,7 @@ export async function renderPostDetail(
     metadata.domain !== "reddit.com" &&
     metadata.mediaUrl;
 
-  if (isLinkPost && metadata?.mediaUrl) {
+  if (isLinkPost && metadata?.mediaUrl && externalMedia.length === 0) {
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(metadata.domain!)}&sz=64`;
     linkCardHtml = `
       <a class="reddit-link-card" href="${escapeHtml(metadata.mediaUrl)}" target="_blank" rel="noopener noreferrer">
@@ -222,7 +372,13 @@ export async function renderPostDetail(
 
   // No media, no selftext, and not a link — show text-only post notice
   let emptyNotice = "";
-  if (images.length === 0 && videos.length === 0 && !metadata?.selftext && !isLinkPost) {
+  if (
+    images.length === 0 &&
+    videos.length === 0 &&
+    externalMedia.length === 0 &&
+    !metadata?.selftext &&
+    !isLinkPost
+  ) {
     emptyNotice = `
       <div class="reddit-empty" style="padding:2rem">
         <div class="reddit-empty-icon">📝</div>
@@ -232,16 +388,27 @@ export async function renderPostDetail(
   }
 
   container.innerHTML = `
-    <div class="reddit-post">
+    <div class="reddit-post${postWrapperClass}">
       ${headerHtml}
       ${selftextHtml}
+      <div id="reddit-post-edit-history-slot"></div>
       ${linkCardHtml}
+      ${externalMediaHtml}
       ${videoHtml}
       ${galleryHtml}
       ${emptyNotice}
       <div id="reddit-comments-container"></div>
     </div>
   `;
+
+  // Post-level edit history (rendered as DOM because it contains markdown-
+  // rendered HTML from prior bodies and uses <details> for collapse).
+  if (metadata?.editHistory && metadata.editHistory.length > 0) {
+    const slot = container.querySelector("#reddit-post-edit-history-slot") as HTMLElement | null;
+    if (slot) {
+      slot.appendChild(renderPostEditHistory(metadata.editHistory));
+    }
+  }
 
   // Wire up lightbox on gallery images
   if (images.length > 0) {

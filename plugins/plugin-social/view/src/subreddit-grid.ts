@@ -1,15 +1,12 @@
 import type { PluginViewAPI, SubredditInfo } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
 import { nextFrame } from "./async-utils";
+import { isImageFile } from "../../../_shared/view/media-player";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
-}
-
-function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
 }
 
 /** Files that are directory metadata, not post content */

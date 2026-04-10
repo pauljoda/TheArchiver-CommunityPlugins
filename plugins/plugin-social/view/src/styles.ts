@@ -1913,4 +1913,148 @@ const CSS = `
   padding: 2rem 1rem;
 }
 
+/* ═════════════════════════════════════════════════════════════════════════
+   Change tracking — chips, backgrounds, and edit-history accordion.
+   Applied to comments and to the top-level post to surface edits and
+   deletions detected by the plugin's diff/merge step across runs.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Chips: stack after existing header badges, mirror .reddit-mod-badge ── */
+.reddit-chip {
+  display: inline-block;
+  padding: 0 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.reddit-chip--new {
+  background: oklch(0.55 0.18 145 / 0.18);
+  color: oklch(0.7 0.18 145);
+  border-color: oklch(0.55 0.18 145 / 0.35);
+}
+
+.reddit-chip--edited {
+  background: oklch(0.65 0.17 75 / 0.2);
+  color: oklch(0.75 0.17 75);
+  border-color: oklch(0.65 0.17 75 / 0.4);
+}
+
+.reddit-chip--deleted {
+  background: oklch(0.55 0.22 25 / 0.2);
+  color: oklch(0.7 0.22 25);
+  border-color: oklch(0.55 0.22 25 / 0.4);
+}
+
+/* ── Comment backgrounds ── */
+/* Tinted block to the right of the thread line so the existing depth-colored
+   border still reads cleanly. Scoped to .reddit-comment-body so grafted
+   deleted subtrees don't paint their replies. */
+.reddit-comment--new > .reddit-comment-body {
+  background: oklch(0.55 0.18 145 / 0.08);
+  border-left: 2px solid oklch(0.55 0.18 145 / 0.5);
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.reddit-comment--deleted > .reddit-comment-body {
+  background: oklch(0.55 0.22 25 / 0.08);
+  border-left: 2px solid oklch(0.55 0.22 25 / 0.5);
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+/* ── Post-level backgrounds — applied to the outer .reddit-post wrapper ── */
+.reddit-post--new .reddit-post-header,
+.reddit-post--new .reddit-post-selftext {
+  background: oklch(0.55 0.18 145 / 0.06);
+  border-left: 3px solid oklch(0.55 0.18 145 / 0.5);
+  padding-left: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.reddit-post--deleted .reddit-post-header,
+.reddit-post--deleted .reddit-post-selftext {
+  background: oklch(0.55 0.22 25 / 0.06);
+  border-left: 3px solid oklch(0.55 0.22 25 / 0.5);
+  padding-left: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+/* ── Edit history accordion ── */
+.reddit-edit-history {
+  margin-top: 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.75rem;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  padding: 0.25rem 0;
+  list-style: none;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary::-webkit-details-marker {
+  display: none;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary::before {
+  content: "\u25B6";
+  display: inline-block;
+  margin-right: 0.375rem;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.reddit-edit-history[open] > .reddit-edit-history__summary::before {
+  transform: rotate(90deg);
+}
+
+.reddit-edit-history > .reddit-edit-history__summary:hover {
+  color: var(--foreground);
+}
+
+.reddit-edit-history__entries {
+  margin-top: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reddit-edit-history__entry {
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border-radius: 0.375rem;
+}
+
+.reddit-edit-history__entry + .reddit-edit-history__entry {
+  border-top: 1px solid var(--border);
+}
+
+.reddit-edit-history__timestamp {
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  margin-bottom: 0.25rem;
+}
+
+.reddit-edit-history__title {
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.reddit-edit-history__body {
+  color: var(--foreground);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 `;

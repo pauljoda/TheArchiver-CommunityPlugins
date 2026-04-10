@@ -2,6 +2,7 @@ import type { PluginViewAPI, FileEntry, PostMetadata } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
 import { LazyFeedCard } from "./lazy-feed-card";
 import { mapLimit } from "./async-utils";
+import { isImageFile, isVideoFile } from "../../../_shared/view/media-player";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -38,10 +39,6 @@ function formatScore(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
-}
-
-function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
 }
 
 // SVG icons matching Reddit's UI
@@ -115,8 +112,82 @@ interface RedditTimelinePost {
   videoFile?: FileEntry;
 }
 
+/** Matches `icon.png` / `icon.jpg` / `icon.jpeg` / `icon.webp` (case-insensitive). */
+const ICON_FILENAME_RE = /^icon\.(jpe?g|png|webp)$/i;
+
+/**
+ * For a mixed-subreddit timeline (e.g. the Upvoted view), walk ancestor
+ * directories of `subredditPath` until we find one that holds sibling
+ * folders for the subreddits we care about — that ancestor is the "Reddit
+ * subfolder root" — then fetch each subreddit's `icon.*` file and return a
+ * map from subreddit name to a `/api/files/download?path=...` URL.
+ *
+ * For the single-subreddit view, this still does the right thing: the probe
+ * succeeds at the parent directory, and the map contains exactly one entry
+ * (the current subreddit).
+ */
+async function resolveSubredditIconMap(
+  api: PluginViewAPI,
+  subredditPath: string,
+  subreddits: Set<string>
+): Promise<Map<string, string>> {
+  const iconMap = new Map<string, string>();
+  if (subreddits.size === 0) return iconMap;
+
+  const probeSubreddit = subreddits.values().next().value as string;
+  if (!probeSubreddit) return iconMap;
+
+  // Walk up at most 5 ancestors looking for a directory that contains a
+  // sibling folder matching the probe subreddit. First hit wins.
+  const segments = subredditPath.split("/").filter(Boolean);
+  const leadingSlash = subredditPath.startsWith("/") ? "/" : "";
+
+  let redditRoot: string | null = null;
+  for (let depth = 1; depth <= 5 && !redditRoot; depth++) {
+    if (segments.length - depth <= 0) break;
+    const ancestor = leadingSlash + segments.slice(0, segments.length - depth).join("/");
+    if (!ancestor) continue;
+    try {
+      const ancestorEntries = await api.fetchFiles(ancestor);
+      const ancestorChildren = new Set(
+        ancestorEntries.filter((e) => e.isDirectory).map((e) => e.name)
+      );
+      if (ancestorChildren.has(probeSubreddit)) {
+        redditRoot = ancestor;
+        break;
+      }
+    } catch {
+      // Directory doesn't exist or isn't readable — keep walking up.
+    }
+  }
+
+  if (!redditRoot) return iconMap;
+
+  // Fetch the icon listing for each unique subreddit in parallel (small fan-out).
+  await mapLimit(Array.from(subreddits), 6, async (sub) => {
+    try {
+      const entries = await api.fetchFiles(`${redditRoot}/${sub}`);
+      const iconEntry = entries.find(
+        (e) => !e.isDirectory && ICON_FILENAME_RE.test(e.name)
+      );
+      if (iconEntry) {
+        iconMap.set(
+          sub,
+          `/api/files/download?path=${encodeURIComponent(iconEntry.path)}`
+        );
+      }
+    } catch {
+      // Subreddit folder missing (user never downloaded that sub directly)
+      // → no icon; card falls back to the placeholder.
+    }
+  });
+
+  return iconMap;
+}
+
 function buildMediaBlock(
-  post: RedditTimelinePost
+  post: RedditTimelinePost,
+  observeVideo: (video: HTMLVideoElement) => void
 ): HTMLElement | null {
   const meta = post.metadata;
 
@@ -129,6 +200,15 @@ function buildMediaBlock(
     video.src = `/api/files/download?path=${encodeURIComponent(post.videoFile.path)}`;
     video.controls = true;
     video.preload = "metadata";
+    // Autoplay-when-in-viewport wiring. The shared observer at the timeline
+    // level decides when to call `video.play()` / `video.pause()` based on
+    // scroll position. Muted + loop + playsInline are set here (and also
+    // inside `observeVideo` as belt-and-braces) because browsers require
+    // `muted` AND `playsinline` for autoplay without user interaction.
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    observeVideo(video);
     wrap.appendChild(video);
     return wrap;
   }
@@ -198,7 +278,8 @@ function buildMediaBlock(
 function renderPostCard(
   post: RedditTimelinePost,
   api: PluginViewAPI,
-  subredditAvatarUrl: string | null
+  lookupSubredditIcon: (subreddit: string) => string | null,
+  observeVideo: (video: HTMLVideoElement) => void
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "rdt-post-card";
@@ -208,12 +289,17 @@ function renderPostCard(
   const header = document.createElement("div");
   header.className = "rdt-post-header";
 
-  let avatarHtml = "";
-  if (subredditAvatarUrl) {
-    avatarHtml = `<img class="rdt-subreddit-icon" src="${escapeHtml(subredditAvatarUrl)}" alt="" />`;
-  } else {
-    avatarHtml = `<div class="rdt-subreddit-icon rdt-subreddit-icon-placeholder"></div>`;
-  }
+  // Per-card icon resolution: look up the post's own subreddit in the preloaded
+  // icon map. For mixed-subreddit timelines (e.g. the Upvoted view) this gives
+  // each card the correct icon; for single-subreddit views it's the same icon
+  // for every card. If no icon is available we render the header WITHOUT an
+  // avatar (no placeholder circle) and also hide any <img> at runtime if the
+  // network fetch for the file fails.
+  const perPostIcon = meta.subreddit ? lookupSubredditIcon(meta.subreddit) : null;
+
+  const avatarHtml = perPostIcon
+    ? `<img class="rdt-subreddit-icon" src="${escapeHtml(perPostIcon)}" alt="" onerror="this.style.display='none'" />`
+    : "";
 
   header.innerHTML = `
     ${avatarHtml}
@@ -249,7 +335,7 @@ function renderPostCard(
   card.appendChild(titleEl);
 
   // -- Media / content block --
-  const mediaEl = buildMediaBlock(post);
+  const mediaEl = buildMediaBlock(post, observeVideo);
   if (mediaEl) card.appendChild(mediaEl);
 
   // -- Engagement bar: upvote score, comments, award, share --
@@ -321,7 +407,7 @@ async function enrichPost(
   );
 
   const videoFile = files.find(
-    (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+    (f) => !f.isDirectory && isVideoFile(f.name)
   );
 
   return { path: stub.path, metadata: stub.metadata, images, videoFile };
@@ -358,18 +444,28 @@ export async function renderRedditTimeline(
     return;
   }
 
-  // Check for subreddit avatar icon
+  // The profile-header icon at the top of the timeline — for the
+  // single-subreddit case this is the folder's own icon.png. For the user's
+  // Upvoted view there's no single icon here; we fall back to null and the
+  // profile header shows its text-only form.
   const iconFiles = entries.filter(
-    (e) =>
-      !e.isDirectory &&
-      (e.name === "icon.jpg" ||
-        e.name === "icon.png" ||
-        e.name === "icon.webp")
+    (e) => !e.isDirectory && ICON_FILENAME_RE.test(e.name)
   );
   const subredditAvatarUrl =
     iconFiles.length > 0
       ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}`
       : null;
+
+  // Preloaded per-card icon map populated AFTER the stub pass (below). Until
+  // then, per-card icon lookups return the folder-level `subredditAvatarUrl`
+  // as a default (for single-subreddit timelines that also means the correct
+  // icon shows immediately on the first render).
+  let subredditIconMap: Map<string, string> = new Map();
+  const lookupSubredditIcon = (subreddit: string): string | null => {
+    const hit = subredditIconMap.get(subreddit);
+    if (hit) return hit;
+    return subredditAvatarUrl;
+  };
 
   // ── Load ALL stubs upfront — .nfo files are tiny, blast through them ──
   let loadedCount = 0;
@@ -387,8 +483,73 @@ export async function renderRedditTimeline(
     (stub): stub is PostStub => stub !== null
   );
 
+  // ── Resolve per-subreddit icons once, up front ─────────────────────────
+  // For a mixed-subreddit timeline (Upvoted view) this fetches an icon URL
+  // for every unique subreddit represented in the stubs. For a
+  // single-subreddit timeline it just re-confirms the folder icon.
+  {
+    const uniqueSubreddits = new Set<string>();
+    for (const stub of indexedStubs) {
+      if (stub.metadata.subreddit) uniqueSubreddits.add(stub.metadata.subreddit);
+    }
+    subredditIconMap = await resolveSubredditIconMap(
+      api,
+      subredditPath,
+      uniqueSubreddits
+    );
+  }
+
+  // ── Shared in-viewport autoplay controller for <video> elements ───────
+  //
+  // One IntersectionObserver watches every video card in the timeline and
+  // toggles `play()`/`pause()` based on viewport proximity. Videos are
+  // created in `buildMediaBlock` with `muted + loop + playsInline` so the
+  // browser allows autoplay without user interaction.
+  //
+  //   Desktop (>=768px): rootMargin "150% 0px" + threshold 0
+  //     → any card within ~1.5 viewports above or below the visible area
+  //       plays. With typical card heights this covers the current card
+  //       plus ~2 on either side.
+  //   Mobile  (<768px):  rootMargin "0px" + threshold 0.5
+  //     → only the focal card (≥50% visible) plays. Avoids chewing through
+  //       mobile data by decoding multiple videos at once.
+  const isMobileViewport = window.matchMedia("(max-width: 768px)").matches;
+  const videoObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target as HTMLVideoElement;
+        if (entry.isIntersecting) {
+          // Browsers return a rejected Promise if a concurrent call was
+          // made (e.g. play() → pause() → play() in quick succession).
+          // Swallow it — the observer will correct on the next callback.
+          const p = video.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } else {
+          video.pause();
+        }
+      }
+    },
+    isMobileViewport
+      ? { rootMargin: "0px", threshold: 0.5 }
+      : { rootMargin: "150% 0px", threshold: 0 }
+  );
+  const observeVideo = (video: HTMLVideoElement): void => {
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    videoObserver.observe(video);
+  };
+
   // ── Sort / filter state ──
-  let sortMode: "new" | "top" = "new";
+  type SortMode = "upvoted" | "new" | "top";
+  // Auto-detect whether this timeline has upvoted-order data: if any stub
+  // carries `upvotedArchivedAt`, this is the user's Upvoted view. In that
+  // case we expose the "User Upvoted" option and default to it. Otherwise we
+  // stick with the original two options and default to "new".
+  const hasUpvotedData = indexedStubs.some(
+    (s) => typeof s.metadata.upvotedArchivedAt === "string"
+  );
+  let sortMode: SortMode = hasUpvotedData ? "upvoted" : "new";
   let searchTerm = "";
 
   function applySortAndFilter(): PostStub[] {
@@ -396,7 +557,28 @@ export async function renderRedditTimeline(
       ? indexedStubs.filter((s) => matchesRedditSearch(s, searchTerm))
       : [...indexedStubs];
 
-    if (sortMode === "new") {
+    if (sortMode === "upvoted") {
+      // (archivedAt DESC, position ASC). Posts lacking upvoted metadata fall
+      // to the bottom in their own stable order.
+      list.sort((a, b) => {
+        const aHas = !!a.metadata.upvotedArchivedAt;
+        const bHas = !!b.metadata.upvotedArchivedAt;
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        if (aHas && bHas) {
+          const aTime = new Date(a.metadata.upvotedArchivedAt!).getTime();
+          const bTime = new Date(b.metadata.upvotedArchivedAt!).getTime();
+          if (aTime !== bTime) return bTime - aTime;
+          const aPos = a.metadata.upvotedPosition ?? Number.MAX_SAFE_INTEGER;
+          const bPos = b.metadata.upvotedPosition ?? Number.MAX_SAFE_INTEGER;
+          return aPos - bPos;
+        }
+        // Neither has upvoted data — break ties by post creation time.
+        return (
+          new Date(b.metadata.created).getTime() -
+          new Date(a.metadata.created).getTime()
+        );
+      });
+    } else if (sortMode === "new") {
       list.sort(
         (a, b) =>
           new Date(b.metadata.created).getTime() -
@@ -439,11 +621,19 @@ export async function renderRedditTimeline(
   // -- Controls bar: search + sort --
   const controls = document.createElement("div");
   controls.className = "rdt-controls";
+  const sortOptions = [
+    hasUpvotedData
+      ? `<option value="upvoted"${sortMode === "upvoted" ? " selected" : ""}>User Upvoted</option>`
+      : "",
+    `<option value="new"${sortMode === "new" ? " selected" : ""}>Newest</option>`,
+    `<option value="top"${sortMode === "top" ? " selected" : ""}>Top</option>`,
+  ]
+    .filter(Boolean)
+    .join("");
   controls.innerHTML = `
     <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
     <select class="rdt-sort-select" aria-label="Sort posts">
-      <option value="new">Newest</option>
-      <option value="top">Top</option>
+      ${sortOptions}
     </select>
   `;
   container.appendChild(controls);
@@ -472,7 +662,7 @@ export async function renderRedditTimeline(
       initiallyRendered: index < 8,
       renderMargin: "500px",
       render: () => {
-        const card = renderPostCard(post, api, subredditAvatarUrl);
+        const card = renderPostCard(post, api, lookupSubredditIcon, observeVideo);
         if (onNavigate) {
           card.style.cursor = "pointer";
           card.addEventListener("click", (e) => {
@@ -545,7 +735,7 @@ export async function renderRedditTimeline(
 
   // Sort handler
   const handleSortChange = () => {
-    sortMode = sortSelect.value as "new" | "top";
+    sortMode = sortSelect.value as SortMode;
     void resetAndRender();
   };
   sortSelect.addEventListener("change", handleSortChange);
@@ -563,6 +753,7 @@ export async function renderRedditTimeline(
   return () => {
     isDisposed = true;
     scrollObserver?.disconnect();
+    videoObserver.disconnect();
     clearRenderedCards();
     sortSelect.removeEventListener("change", handleSortChange);
     searchInput.removeEventListener("input", handleSearchInput);

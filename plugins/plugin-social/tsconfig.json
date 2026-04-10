@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "declaration": false
   },
-  "include": ["index.ts"],
+  "include": ["index.ts", "_shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

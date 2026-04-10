@@ -1,6 +1,6 @@
 {
   "name": "Socials",
-  "version": "1.5.5",
+  "version": "1.9.0",
   "description": "Download images, galleries, and metadata from social media platforms",
   "author": "TheArchiver",
   "urlPatterns": [
@@ -46,10 +46,22 @@
       "defaultValue": "hot",
       "validation": {
         "options": [
-          { "label": "Hot", "value": "hot" },
-          { "label": "New", "value": "new" },
-          { "label": "Top", "value": "top" },
-          { "label": "Rising", "value": "rising" }
+          {
+            "label": "Hot",
+            "value": "hot"
+          },
+          {
+            "label": "New",
+            "value": "new"
+          },
+          {
+            "label": "Top",
+            "value": "top"
+          },
+          {
+            "label": "Rising",
+            "value": "rising"
+          }
         ]
       },
       "sortOrder": 2
@@ -58,16 +70,34 @@
       "key": "subreddit_time_filter",
       "type": "select",
       "label": "Top Posts Time Filter",
-      "description": "Time range for 'top' sort order",
+      "description": "Time range for \"top\" sort order",
       "defaultValue": "all",
       "validation": {
         "options": [
-          { "label": "Past Hour", "value": "hour" },
-          { "label": "Past 24 Hours", "value": "day" },
-          { "label": "Past Week", "value": "week" },
-          { "label": "Past Month", "value": "month" },
-          { "label": "Past Year", "value": "year" },
-          { "label": "All Time", "value": "all" }
+          {
+            "label": "Past Hour",
+            "value": "hour"
+          },
+          {
+            "label": "Past 24 Hours",
+            "value": "day"
+          },
+          {
+            "label": "Past Week",
+            "value": "week"
+          },
+          {
+            "label": "Past Month",
+            "value": "month"
+          },
+          {
+            "label": "Past Year",
+            "value": "year"
+          },
+          {
+            "label": "All Time",
+            "value": "all"
+          }
         ]
       },
       "sortOrder": 3
@@ -89,13 +119,218 @@
       "sortOrder": 5
     },
     {
+      "key": "reddit_account_1_username",
+      "type": "string",
+      "label": "Username",
+      "description": "Reddit username this slot belongs to (e.g. \"spez\"). When you download a URL like reddit.com/user/<name>/upvoted, the plugin matches <name> against this field (case-insensitive) to pick the right cookies file.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 1",
+      "sortOrder": 110
+    },
+    {
+      "key": "reddit_account_1_cookies_file",
+      "type": "file",
+      "label": "Cookies File",
+      "description": "Netscape-format cookies.txt exported from a browser session logged in as this user. Use the \"Get cookies.txt LOCALLY\" extension (Chrome) or \"cookies.txt\" extension (Firefox): log into reddit.com as this account, click the extension, export for this site.",
+      "required": false,
+      "section": "Reddit Account 1",
+      "sortOrder": 111,
+      "validation": {
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
+      "key": "reddit_account_1_verified_username",
+      "type": "string",
+      "label": "Verified As",
+      "description": "Populated by \"Test Connection\" after validating the cookies file — this is the authoritative name used for URL matching.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 1",
+      "sortOrder": 112
+    },
+    {
+      "key": "reddit_account_1_test",
+      "type": "action",
+      "label": "Test Connection",
+      "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
+      "section": "Reddit Account 1",
+      "sortOrder": 113
+    },
+    {
+      "key": "reddit_account_2_username",
+      "type": "string",
+      "label": "Username",
+      "description": "Reddit username this slot belongs to (e.g. \"spez\"). When you download a URL like reddit.com/user/<name>/upvoted, the plugin matches <name> against this field (case-insensitive) to pick the right cookies file.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 2",
+      "sortOrder": 120
+    },
+    {
+      "key": "reddit_account_2_cookies_file",
+      "type": "file",
+      "label": "Cookies File",
+      "description": "Netscape-format cookies.txt exported from a browser session logged in as this user. Use the \"Get cookies.txt LOCALLY\" extension (Chrome) or \"cookies.txt\" extension (Firefox): log into reddit.com as this account, click the extension, export for this site.",
+      "required": false,
+      "section": "Reddit Account 2",
+      "sortOrder": 121,
+      "validation": {
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
+      "key": "reddit_account_2_verified_username",
+      "type": "string",
+      "label": "Verified As",
+      "description": "Populated by \"Test Connection\" after validating the cookies file — this is the authoritative name used for URL matching.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 2",
+      "sortOrder": 122
+    },
+    {
+      "key": "reddit_account_2_test",
+      "type": "action",
+      "label": "Test Connection",
+      "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
+      "section": "Reddit Account 2",
+      "sortOrder": 123
+    },
+    {
+      "key": "reddit_account_3_username",
+      "type": "string",
+      "label": "Username",
+      "description": "Reddit username this slot belongs to (e.g. \"spez\"). When you download a URL like reddit.com/user/<name>/upvoted, the plugin matches <name> against this field (case-insensitive) to pick the right cookies file.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 3",
+      "sortOrder": 130
+    },
+    {
+      "key": "reddit_account_3_cookies_file",
+      "type": "file",
+      "label": "Cookies File",
+      "description": "Netscape-format cookies.txt exported from a browser session logged in as this user. Use the \"Get cookies.txt LOCALLY\" extension (Chrome) or \"cookies.txt\" extension (Firefox): log into reddit.com as this account, click the extension, export for this site.",
+      "required": false,
+      "section": "Reddit Account 3",
+      "sortOrder": 131,
+      "validation": {
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
+      "key": "reddit_account_3_verified_username",
+      "type": "string",
+      "label": "Verified As",
+      "description": "Populated by \"Test Connection\" after validating the cookies file — this is the authoritative name used for URL matching.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 3",
+      "sortOrder": 132
+    },
+    {
+      "key": "reddit_account_3_test",
+      "type": "action",
+      "label": "Test Connection",
+      "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
+      "section": "Reddit Account 3",
+      "sortOrder": 133
+    },
+    {
+      "key": "reddit_account_4_username",
+      "type": "string",
+      "label": "Username",
+      "description": "Reddit username this slot belongs to (e.g. \"spez\"). When you download a URL like reddit.com/user/<name>/upvoted, the plugin matches <name> against this field (case-insensitive) to pick the right cookies file.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 4",
+      "sortOrder": 140
+    },
+    {
+      "key": "reddit_account_4_cookies_file",
+      "type": "file",
+      "label": "Cookies File",
+      "description": "Netscape-format cookies.txt exported from a browser session logged in as this user. Use the \"Get cookies.txt LOCALLY\" extension (Chrome) or \"cookies.txt\" extension (Firefox): log into reddit.com as this account, click the extension, export for this site.",
+      "required": false,
+      "section": "Reddit Account 4",
+      "sortOrder": 141,
+      "validation": {
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
+      "key": "reddit_account_4_verified_username",
+      "type": "string",
+      "label": "Verified As",
+      "description": "Populated by \"Test Connection\" after validating the cookies file — this is the authoritative name used for URL matching.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 4",
+      "sortOrder": 142
+    },
+    {
+      "key": "reddit_account_4_test",
+      "type": "action",
+      "label": "Test Connection",
+      "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
+      "section": "Reddit Account 4",
+      "sortOrder": 143
+    },
+    {
+      "key": "reddit_account_5_username",
+      "type": "string",
+      "label": "Username",
+      "description": "Reddit username this slot belongs to (e.g. \"spez\"). When you download a URL like reddit.com/user/<name>/upvoted, the plugin matches <name> against this field (case-insensitive) to pick the right cookies file.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 5",
+      "sortOrder": 150
+    },
+    {
+      "key": "reddit_account_5_cookies_file",
+      "type": "file",
+      "label": "Cookies File",
+      "description": "Netscape-format cookies.txt exported from a browser session logged in as this user. Use the \"Get cookies.txt LOCALLY\" extension (Chrome) or \"cookies.txt\" extension (Firefox): log into reddit.com as this account, click the extension, export for this site.",
+      "required": false,
+      "section": "Reddit Account 5",
+      "sortOrder": 151,
+      "validation": {
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
+      "key": "reddit_account_5_verified_username",
+      "type": "string",
+      "label": "Verified As",
+      "description": "Populated by \"Test Connection\" after validating the cookies file — this is the authoritative name used for URL matching.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 5",
+      "sortOrder": 152
+    },
+    {
+      "key": "reddit_account_5_test",
+      "type": "action",
+      "label": "Test Connection",
+      "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
+      "section": "Reddit Account 5",
+      "sortOrder": 153
+    },
+    {
       "key": "bluesky_subfolder",
       "type": "string",
       "label": "Bluesky Subfolder",
       "description": "Subfolder name for Bluesky content within the save directory",
       "required": false,
       "defaultValue": "Bluesky",
-      "sortOrder": 10
+      "sortOrder": 200
     },
     {
       "key": "bluesky_post_count",
@@ -103,7 +338,7 @@
       "label": "Bluesky Posts to Download",
       "description": "Number of posts to fetch from a Bluesky profile. -1 for all available posts",
       "defaultValue": 100,
-      "sortOrder": 11
+      "sortOrder": 201
     },
     {
       "key": "twitter_subfolder",
@@ -112,7 +347,7 @@
       "description": "Subfolder name for Twitter/X content within the save directory",
       "required": false,
       "defaultValue": "Twitter",
-      "sortOrder": 20
+      "sortOrder": 210
     }
   ]
 }

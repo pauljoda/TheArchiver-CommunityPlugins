@@ -1,4 +1,11 @@
-import type { PluginViewAPI, PostMetadata, BlueskyPostMetadata, TwitterPostMetadata } from "./types";
+import type {
+  PluginViewAPI,
+  PostMetadata,
+  BlueskyPostMetadata,
+  TwitterPostMetadata,
+  ChangeStatus,
+  PostEditHistoryEntry,
+} from "./types";
 
 /**
  * Parse a Reddit Post.nfo XML file into PostMetadata.
@@ -33,6 +40,41 @@ function parseNfoXml(xmlText: string): PostMetadata | null {
       return text(tag) === "true";
     };
 
+    const upvotedArchivedAtRaw = text("upvoted_archived_at");
+    const upvotedPositionRaw = text("upvoted_position");
+
+    // Change-tracking annotations (populated by the downloader's
+    // diff/merge step when a prior snapshot exists). Both fields are
+    // optional — pre-1.9 Post.nfo files don't carry them.
+    let changeStatus: ChangeStatus[] | undefined;
+    const changeStatusRaw = text("change_status");
+    if (changeStatusRaw) {
+      const parts = changeStatusRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s): s is ChangeStatus =>
+          s === "new" || s === "edited" || s === "deleted"
+        );
+      if (parts.length > 0) changeStatus = parts;
+    }
+
+    let editHistory: PostEditHistoryEntry[] | undefined;
+    const historyEl = root.querySelector("edit_history");
+    if (historyEl) {
+      const entries: PostEditHistoryEntry[] = [];
+      historyEl.querySelectorAll("entry").forEach((entry) => {
+        const ts = entry.getAttribute("timestamp") || "";
+        const titleEl = entry.querySelector("title");
+        const selfEl = entry.querySelector("selftext");
+        entries.push({
+          timestamp: ts,
+          title: titleEl?.textContent || "",
+          selftext: selfEl?.textContent || "",
+        });
+      });
+      if (entries.length > 0) editHistory = entries;
+    }
+
     return {
       title: text("title"),
       author: text("author") || "[deleted]",
@@ -52,6 +94,12 @@ function parseNfoXml(xmlText: string): PostMetadata | null {
       postHint: text("post_hint") || undefined,
       over18: bool("over_18"),
       spoiler: bool("spoiler"),
+      upvotedArchivedAt: upvotedArchivedAtRaw || undefined,
+      upvotedPosition: upvotedPositionRaw
+        ? parseInt(upvotedPositionRaw, 10)
+        : undefined,
+      changeStatus,
+      editHistory,
     };
   } catch {
     return null;

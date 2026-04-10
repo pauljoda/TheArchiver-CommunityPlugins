@@ -1918,6 +1918,150 @@
   padding: 2rem 1rem;
 }
 
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   Change tracking \u2014 chips, backgrounds, and edit-history accordion.
+   Applied to comments and to the top-level post to surface edits and
+   deletions detected by the plugin's diff/merge step across runs.
+   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+
+/* \u2500\u2500 Chips: stack after existing header badges, mirror .reddit-mod-badge \u2500\u2500 */
+.reddit-chip {
+  display: inline-block;
+  padding: 0 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.reddit-chip--new {
+  background: oklch(0.55 0.18 145 / 0.18);
+  color: oklch(0.7 0.18 145);
+  border-color: oklch(0.55 0.18 145 / 0.35);
+}
+
+.reddit-chip--edited {
+  background: oklch(0.65 0.17 75 / 0.2);
+  color: oklch(0.75 0.17 75);
+  border-color: oklch(0.65 0.17 75 / 0.4);
+}
+
+.reddit-chip--deleted {
+  background: oklch(0.55 0.22 25 / 0.2);
+  color: oklch(0.7 0.22 25);
+  border-color: oklch(0.55 0.22 25 / 0.4);
+}
+
+/* \u2500\u2500 Comment backgrounds \u2500\u2500 */
+/* Tinted block to the right of the thread line so the existing depth-colored
+   border still reads cleanly. Scoped to .reddit-comment-body so grafted
+   deleted subtrees don't paint their replies. */
+.reddit-comment--new > .reddit-comment-body {
+  background: oklch(0.55 0.18 145 / 0.08);
+  border-left: 2px solid oklch(0.55 0.18 145 / 0.5);
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.reddit-comment--deleted > .reddit-comment-body {
+  background: oklch(0.55 0.22 25 / 0.08);
+  border-left: 2px solid oklch(0.55 0.22 25 / 0.5);
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+/* \u2500\u2500 Post-level backgrounds \u2014 applied to the outer .reddit-post wrapper \u2500\u2500 */
+.reddit-post--new .reddit-post-header,
+.reddit-post--new .reddit-post-selftext {
+  background: oklch(0.55 0.18 145 / 0.06);
+  border-left: 3px solid oklch(0.55 0.18 145 / 0.5);
+  padding-left: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.reddit-post--deleted .reddit-post-header,
+.reddit-post--deleted .reddit-post-selftext {
+  background: oklch(0.55 0.22 25 / 0.06);
+  border-left: 3px solid oklch(0.55 0.22 25 / 0.5);
+  padding-left: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+/* \u2500\u2500 Edit history accordion \u2500\u2500 */
+.reddit-edit-history {
+  margin-top: 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.75rem;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  padding: 0.25rem 0;
+  list-style: none;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary::-webkit-details-marker {
+  display: none;
+}
+
+.reddit-edit-history > .reddit-edit-history__summary::before {
+  content: "\u25B6";
+  display: inline-block;
+  margin-right: 0.375rem;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.reddit-edit-history[open] > .reddit-edit-history__summary::before {
+  transform: rotate(90deg);
+}
+
+.reddit-edit-history > .reddit-edit-history__summary:hover {
+  color: var(--foreground);
+}
+
+.reddit-edit-history__entries {
+  margin-top: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reddit-edit-history__entry {
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border-radius: 0.375rem;
+}
+
+.reddit-edit-history__entry + .reddit-edit-history__entry {
+  border-top: 1px solid var(--border);
+}
+
+.reddit-edit-history__timestamp {
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  margin-bottom: 0.25rem;
+}
+
+.reddit-edit-history__title {
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.reddit-edit-history__body {
+  color: var(--foreground);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 `;
 
   // view/src/nfo-parser.ts
@@ -1944,6 +2088,32 @@
       const bool = (tag) => {
         return text(tag) === "true";
       };
+      const upvotedArchivedAtRaw = text("upvoted_archived_at");
+      const upvotedPositionRaw = text("upvoted_position");
+      let changeStatus;
+      const changeStatusRaw = text("change_status");
+      if (changeStatusRaw) {
+        const parts = changeStatusRaw.split(",").map((s) => s.trim()).filter(
+          (s) => s === "new" || s === "edited" || s === "deleted"
+        );
+        if (parts.length > 0) changeStatus = parts;
+      }
+      let editHistory;
+      const historyEl = root.querySelector("edit_history");
+      if (historyEl) {
+        const entries = [];
+        historyEl.querySelectorAll("entry").forEach((entry) => {
+          const ts = entry.getAttribute("timestamp") || "";
+          const titleEl = entry.querySelector("title");
+          const selfEl = entry.querySelector("selftext");
+          entries.push({
+            timestamp: ts,
+            title: titleEl?.textContent || "",
+            selftext: selfEl?.textContent || ""
+          });
+        });
+        if (entries.length > 0) editHistory = entries;
+      }
       return {
         title: text("title"),
         author: text("author") || "[deleted]",
@@ -1962,7 +2132,11 @@
         mediaUrl: text("media_url") || void 0,
         postHint: text("post_hint") || void 0,
         over18: bool("over_18"),
-        spoiler: bool("spoiler")
+        spoiler: bool("spoiler"),
+        upvotedArchivedAt: upvotedArchivedAtRaw || void 0,
+        upvotedPosition: upvotedPositionRaw ? parseInt(upvotedPositionRaw, 10) : void 0,
+        changeStatus,
+        editHistory
       };
     } catch {
       return null;
@@ -2226,14 +2400,24 @@
     });
   }
 
+  // ../_shared/view/media-player.ts
+  var IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|avif|svg|tiff?)$/i;
+  var VIDEO_EXT_RE = /\.(mp4|m4v|webm|mov|mkv|avi|flv|wmv|ogv)$/i;
+  function isImageFile(name) {
+    return IMAGE_EXT_RE.test(name);
+  }
+  function isVideoFile(name) {
+    return VIDEO_EXT_RE.test(name);
+  }
+  function isGifLikeFile(name) {
+    return /\.gif(\.(mp4|webm))?$/i.test(name);
+  }
+
   // view/src/subreddit-grid.ts
   function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
-  }
-  function isImageFile(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
   }
   var METADATA_FILES = /* @__PURE__ */ new Set([
     "icon.jpg",
@@ -2612,9 +2796,6 @@
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
   }
-  function isImageFile2(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-  }
   var UPVOTE_ICON = `<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3l-7 7h4v7h6v-7h4L10 3z"/></svg>`;
   var DOWNVOTE_ICON = `<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17l7-7h-4V3H7v7H3l7 7z"/></svg>`;
   var COMMENT_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
@@ -2667,7 +2848,50 @@
     update();
     return overlay;
   }
-  function buildMediaBlock(post) {
+  var ICON_FILENAME_RE = /^icon\.(jpe?g|png|webp)$/i;
+  async function resolveSubredditIconMap(api, subredditPath, subreddits) {
+    const iconMap = /* @__PURE__ */ new Map();
+    if (subreddits.size === 0) return iconMap;
+    const probeSubreddit = subreddits.values().next().value;
+    if (!probeSubreddit) return iconMap;
+    const segments = subredditPath.split("/").filter(Boolean);
+    const leadingSlash = subredditPath.startsWith("/") ? "/" : "";
+    let redditRoot = null;
+    for (let depth = 1; depth <= 5 && !redditRoot; depth++) {
+      if (segments.length - depth <= 0) break;
+      const ancestor = leadingSlash + segments.slice(0, segments.length - depth).join("/");
+      if (!ancestor) continue;
+      try {
+        const ancestorEntries = await api.fetchFiles(ancestor);
+        const ancestorChildren = new Set(
+          ancestorEntries.filter((e) => e.isDirectory).map((e) => e.name)
+        );
+        if (ancestorChildren.has(probeSubreddit)) {
+          redditRoot = ancestor;
+          break;
+        }
+      } catch {
+      }
+    }
+    if (!redditRoot) return iconMap;
+    await mapLimit(Array.from(subreddits), 6, async (sub) => {
+      try {
+        const entries = await api.fetchFiles(`${redditRoot}/${sub}`);
+        const iconEntry = entries.find(
+          (e) => !e.isDirectory && ICON_FILENAME_RE.test(e.name)
+        );
+        if (iconEntry) {
+          iconMap.set(
+            sub,
+            `/api/files/download?path=${encodeURIComponent(iconEntry.path)}`
+          );
+        }
+      } catch {
+      }
+    });
+    return iconMap;
+  }
+  function buildMediaBlock(post, observeVideo) {
     const meta = post.metadata;
     if (post.videoFile) {
       const wrap = document.createElement("div");
@@ -2677,6 +2901,10 @@
       video.src = `/api/files/download?path=${encodeURIComponent(post.videoFile.path)}`;
       video.controls = true;
       video.preload = "metadata";
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      observeVideo(video);
       wrap.appendChild(video);
       return wrap;
     }
@@ -2728,18 +2956,14 @@
     }
     return null;
   }
-  function renderPostCard(post, api, subredditAvatarUrl) {
+  function renderPostCard(post, api, lookupSubredditIcon, observeVideo) {
     const card = document.createElement("div");
     card.className = "rdt-post-card";
     const meta = post.metadata;
     const header = document.createElement("div");
     header.className = "rdt-post-header";
-    let avatarHtml = "";
-    if (subredditAvatarUrl) {
-      avatarHtml = `<img class="rdt-subreddit-icon" src="${escapeHtml2(subredditAvatarUrl)}" alt="" />`;
-    } else {
-      avatarHtml = `<div class="rdt-subreddit-icon rdt-subreddit-icon-placeholder"></div>`;
-    }
+    const perPostIcon = meta.subreddit ? lookupSubredditIcon(meta.subreddit) : null;
+    const avatarHtml = perPostIcon ? `<img class="rdt-subreddit-icon" src="${escapeHtml2(perPostIcon)}" alt="" onerror="this.style.display='none'" />` : "";
     header.innerHTML = `
     ${avatarHtml}
     <span class="rdt-subreddit">r/${escapeHtml2(meta.subreddit)}</span>
@@ -2768,7 +2992,7 @@
     titleEl.className = "rdt-post-title";
     titleEl.textContent = meta.title;
     card.appendChild(titleEl);
-    const mediaEl = buildMediaBlock(post);
+    const mediaEl = buildMediaBlock(post, observeVideo);
     if (mediaEl) card.appendChild(mediaEl);
     const scoreClass = meta.score > 0 ? "rdt-score-up" : meta.score < 0 ? "rdt-score-down" : "rdt-score-neutral";
     const commentCount = meta.numComments ?? 0;
@@ -2808,10 +3032,10 @@
   async function enrichPost(api, stub) {
     const files = await api.fetchFiles(stub.path);
     const images = files.filter(
-      (f) => !f.isDirectory && isImageFile2(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+      (f) => !f.isDirectory && isImageFile(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
     );
     const videoFile = files.find(
-      (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
+      (f) => !f.isDirectory && isVideoFile(f.name)
     );
     return { path: stub.path, metadata: stub.metadata, images, videoFile };
   }
@@ -2833,9 +3057,15 @@
       return;
     }
     const iconFiles = entries.filter(
-      (e) => !e.isDirectory && (e.name === "icon.jpg" || e.name === "icon.png" || e.name === "icon.webp")
+      (e) => !e.isDirectory && ICON_FILENAME_RE.test(e.name)
     );
     const subredditAvatarUrl = iconFiles.length > 0 ? `/api/files/download?path=${encodeURIComponent(iconFiles[0].path)}` : null;
+    let subredditIconMap = /* @__PURE__ */ new Map();
+    const lookupSubredditIcon = (subreddit) => {
+      const hit = subredditIconMap.get(subreddit);
+      if (hit) return hit;
+      return subredditAvatarUrl;
+    };
     let loadedCount = 0;
     const statusEl = container.querySelector(".reddit-loading");
     const allStubs = await mapLimit(postDirs, STUB_CONCURRENCY, async (dir) => {
@@ -2849,11 +3079,62 @@
     const indexedStubs = allStubs.filter(
       (stub) => stub !== null
     );
-    let sortMode = "new";
+    {
+      const uniqueSubreddits = /* @__PURE__ */ new Set();
+      for (const stub of indexedStubs) {
+        if (stub.metadata.subreddit) uniqueSubreddits.add(stub.metadata.subreddit);
+      }
+      subredditIconMap = await resolveSubredditIconMap(
+        api,
+        subredditPath,
+        uniqueSubreddits
+      );
+    }
+    const isMobileViewport = window.matchMedia("(max-width: 768px)").matches;
+    const videoObserver = new IntersectionObserver(
+      (entries2) => {
+        for (const entry of entries2) {
+          const video = entry.target;
+          if (entry.isIntersecting) {
+            const p = video.play();
+            if (p && typeof p.catch === "function") p.catch(() => {
+            });
+          } else {
+            video.pause();
+          }
+        }
+      },
+      isMobileViewport ? { rootMargin: "0px", threshold: 0.5 } : { rootMargin: "150% 0px", threshold: 0 }
+    );
+    const observeVideo = (video) => {
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      videoObserver.observe(video);
+    };
+    const hasUpvotedData = indexedStubs.some(
+      (s) => typeof s.metadata.upvotedArchivedAt === "string"
+    );
+    let sortMode = hasUpvotedData ? "upvoted" : "new";
     let searchTerm = "";
     function applySortAndFilter() {
       let list = searchTerm ? indexedStubs.filter((s) => matchesRedditSearch(s, searchTerm)) : [...indexedStubs];
-      if (sortMode === "new") {
+      if (sortMode === "upvoted") {
+        list.sort((a, b) => {
+          const aHas = !!a.metadata.upvotedArchivedAt;
+          const bHas = !!b.metadata.upvotedArchivedAt;
+          if (aHas !== bHas) return aHas ? -1 : 1;
+          if (aHas && bHas) {
+            const aTime = new Date(a.metadata.upvotedArchivedAt).getTime();
+            const bTime = new Date(b.metadata.upvotedArchivedAt).getTime();
+            if (aTime !== bTime) return bTime - aTime;
+            const aPos = a.metadata.upvotedPosition ?? Number.MAX_SAFE_INTEGER;
+            const bPos = b.metadata.upvotedPosition ?? Number.MAX_SAFE_INTEGER;
+            return aPos - bPos;
+          }
+          return new Date(b.metadata.created).getTime() - new Date(a.metadata.created).getTime();
+        });
+      } else if (sortMode === "new") {
         list.sort(
           (a, b) => new Date(b.metadata.created).getTime() - new Date(a.metadata.created).getTime()
         );
@@ -2886,11 +3167,15 @@
     container.appendChild(profileHeader);
     const controls = document.createElement("div");
     controls.className = "rdt-controls";
+    const sortOptions = [
+      hasUpvotedData ? `<option value="upvoted"${sortMode === "upvoted" ? " selected" : ""}>User Upvoted</option>` : "",
+      `<option value="new"${sortMode === "new" ? " selected" : ""}>Newest</option>`,
+      `<option value="top"${sortMode === "top" ? " selected" : ""}>Top</option>`
+    ].filter(Boolean).join("");
     controls.innerHTML = `
     <input type="text" class="timeline-search" placeholder="Search posts..." aria-label="Search posts" />
     <select class="rdt-sort-select" aria-label="Sort posts">
-      <option value="new">Newest</option>
-      <option value="top">Top</option>
+      ${sortOptions}
     </select>
   `;
     container.appendChild(controls);
@@ -2913,7 +3198,7 @@
         initiallyRendered: index < 8,
         renderMargin: "500px",
         render: () => {
-          const card = renderPostCard(post, api, subredditAvatarUrl);
+          const card = renderPostCard(post, api, lookupSubredditIcon, observeVideo);
           if (onNavigate) {
             card.style.cursor = "pointer";
             card.addEventListener("click", (e) => {
@@ -2986,6 +3271,7 @@
     return () => {
       isDisposed = true;
       scrollObserver?.disconnect();
+      videoObserver.disconnect();
       clearRenderedCards();
       sortSelect.removeEventListener("change", handleSortChange);
       searchInput.removeEventListener("input", handleSearchInput);
@@ -3085,6 +3371,65 @@
       return "";
     }
   }
+  var CHIP_LABELS = {
+    new: "NEW",
+    edited: "EDITED",
+    deleted: "DELETED"
+  };
+  var CHIP_ORDER = ["new", "edited", "deleted"];
+  function makeChangeChip(status) {
+    const chip = document.createElement("span");
+    chip.className = `reddit-chip reddit-chip--${status}`;
+    chip.textContent = CHIP_LABELS[status];
+    return chip;
+  }
+  function formatSnapshotTimestamp(isoDash) {
+    if (!isoDash) return "";
+    const iso = isoDash.replace(
+      /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/,
+      "$1T$2:$3:$4Z"
+    );
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return isoDash;
+    try {
+      return d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    } catch {
+      return isoDash;
+    }
+  }
+  function renderCommentEditHistory(entries) {
+    const details = document.createElement("details");
+    details.className = "reddit-edit-history";
+    const summary = document.createElement("summary");
+    summary.className = "reddit-edit-history__summary";
+    const n = entries.length;
+    summary.textContent = `Edit history (${n} version${n === 1 ? "" : "s"})`;
+    details.appendChild(summary);
+    const entriesEl = document.createElement("div");
+    entriesEl.className = "reddit-edit-history__entries";
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      const entryEl = document.createElement("div");
+      entryEl.className = "reddit-edit-history__entry";
+      const ts = document.createElement("div");
+      ts.className = "reddit-edit-history__timestamp";
+      ts.textContent = formatSnapshotTimestamp(entry.timestamp);
+      entryEl.appendChild(ts);
+      const body = document.createElement("div");
+      body.className = "reddit-edit-history__body";
+      body.innerHTML = renderMarkdown(entry.body || "");
+      entryEl.appendChild(body);
+      entriesEl.appendChild(entryEl);
+    }
+    details.appendChild(entriesEl);
+    return details;
+  }
   function buildCommentMedia(body, media, postPath) {
     if (!media || Object.keys(media).length === 0) {
       return { cleanBody: body, mediaEls: [] };
@@ -3100,8 +3445,15 @@
       } else if (key.startsWith("img:")) {
         const imgUrl = key.replace("img:", "");
         const escaped = imgUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const pattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
-        cleanBody = cleanBody.replace(pattern, "").trim();
+        const markdownPattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
+        const afterMarkdown = cleanBody.replace(markdownPattern, "");
+        if (afterMarkdown !== cleanBody) {
+          cleanBody = afterMarkdown.trim();
+        } else {
+          const rawPattern = new RegExp(`[ \\t]*${escaped}[ \\t]*`, "g");
+          cleanBody = cleanBody.replace(rawPattern, " ");
+          cleanBody = cleanBody.replace(/\n{3,}/g, "\n\n").trim();
+        }
       }
       const img = document.createElement("img");
       img.className = "reddit-comment-media-img";
@@ -3142,6 +3494,12 @@
     }
     const el = document.createElement("div");
     el.className = "reddit-comment";
+    const status = comment.changeStatus ?? [];
+    if (status.includes("deleted")) {
+      el.classList.add("reddit-comment--deleted");
+    } else if (status.includes("new")) {
+      el.classList.add("reddit-comment--new");
+    }
     const header = document.createElement("div");
     header.className = "reddit-comment-header";
     const authorEl = document.createElement("span");
@@ -3178,6 +3536,11 @@
       dateEl.textContent = dateStr;
       header.appendChild(dateEl);
     }
+    for (const s of CHIP_ORDER) {
+      if (status.includes(s)) {
+        header.appendChild(makeChangeChip(s));
+      }
+    }
     el.appendChild(header);
     const { cleanBody, mediaEls } = buildCommentMedia(comment.body, comment.media, postPath);
     const bodyEl = document.createElement("div");
@@ -3191,6 +3554,9 @@
         mediaContainer.appendChild(img);
       }
       el.appendChild(mediaContainer);
+    }
+    if (comment.editHistory && comment.editHistory.length > 0) {
+      el.appendChild(renderCommentEditHistory(comment.editHistory));
     }
     if (comment.replies && comment.replies.length > 0) {
       const totalReplies = countAllReplies(comment);
@@ -3281,6 +3647,10 @@
   }
 
   // view/src/post-detail.ts
+  var EXTERNAL_MEDIA_PREFIXES = ["redgifs_", "imgur_", "streamable_", "gfycat_"];
+  function isExternalMediaFile(name) {
+    return EXTERNAL_MEDIA_PREFIXES.some((prefix) => name.startsWith(prefix));
+  }
   function escapeHtml4(text) {
     const div = document.createElement("div");
     div.textContent = text;
@@ -3301,11 +3671,69 @@
       return dateStr;
     }
   }
-  function isImageFile3(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
+  var POST_CHIP_LABELS = {
+    new: "NEW",
+    edited: "EDITED",
+    deleted: "DELETED"
+  };
+  var POST_CHIP_ORDER = ["new", "edited", "deleted"];
+  function postChipHtml(status) {
+    return `<span class="reddit-chip reddit-chip--${status}">${POST_CHIP_LABELS[status]}</span>`;
   }
-  function isVideoFile(name) {
-    return /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
+  function formatSnapshotTimestamp2(isoDash) {
+    if (!isoDash) return "";
+    const iso = isoDash.replace(
+      /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/,
+      "$1T$2:$3:$4Z"
+    );
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return isoDash;
+    try {
+      return d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    } catch {
+      return isoDash;
+    }
+  }
+  function renderPostEditHistory(entries) {
+    const details = document.createElement("details");
+    details.className = "reddit-edit-history";
+    const summary = document.createElement("summary");
+    summary.className = "reddit-edit-history__summary";
+    const n = entries.length;
+    summary.textContent = `Edit history (${n} version${n === 1 ? "" : "s"})`;
+    details.appendChild(summary);
+    const entriesEl = document.createElement("div");
+    entriesEl.className = "reddit-edit-history__entries";
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      const entryEl = document.createElement("div");
+      entryEl.className = "reddit-edit-history__entry";
+      const ts = document.createElement("div");
+      ts.className = "reddit-edit-history__timestamp";
+      ts.textContent = formatSnapshotTimestamp2(entry.timestamp);
+      entryEl.appendChild(ts);
+      if (entry.title) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "reddit-edit-history__title";
+        titleEl.textContent = entry.title;
+        entryEl.appendChild(titleEl);
+      }
+      if (entry.selftext) {
+        const body = document.createElement("div");
+        body.className = "reddit-edit-history__body";
+        body.innerHTML = renderMarkdown(entry.selftext);
+        entryEl.appendChild(body);
+      }
+      entriesEl.appendChild(entryEl);
+    }
+    details.appendChild(entriesEl);
+    return details;
   }
   async function parseComments(api, path) {
     try {
@@ -3370,10 +3798,20 @@
       fetchPostMetadata(api, postPath),
       parseComments(api, postPath)
     ]);
-    const images = files.filter((f) => !f.isDirectory && isImageFile3(f.name));
-    const videos = files.filter((f) => !f.isDirectory && isVideoFile(f.name));
+    const mediaFiles = files.filter(
+      (f) => !f.isDirectory && (isImageFile(f.name) || isVideoFile(f.name))
+    );
+    const externalMedia = mediaFiles.filter((f) => isExternalMediaFile(f.name));
+    const images = mediaFiles.filter(
+      (f) => isImageFile(f.name) && !isExternalMediaFile(f.name)
+    );
+    const videos = mediaFiles.filter(
+      (f) => isVideoFile(f.name) && !isExternalMediaFile(f.name)
+    );
     const title = metadata?.title || postPath.split("/").pop() || "Post";
     const scoreClass = metadata ? metadata.score > 0 ? "reddit-score-up" : metadata.score < 0 ? "reddit-score-down" : "reddit-score-neutral" : "reddit-score-neutral";
+    const postStatus = metadata?.changeStatus ?? [];
+    const postWrapperClass = postStatus.includes("deleted") ? " reddit-post--deleted" : postStatus.includes("new") ? " reddit-post--new" : "";
     let headerHtml = `
     <div class="reddit-post-header">
       <h1 class="reddit-post-title">${escapeHtml4(title)}</h1>
@@ -3393,6 +3831,11 @@
       }
       if (metadata.numComments !== void 0) {
         headerHtml += `<span>${metadata.numComments.toLocaleString()} comments</span>`;
+      }
+      for (const s of POST_CHIP_ORDER) {
+        if (postStatus.includes(s)) {
+          headerHtml += postChipHtml(s);
+        }
       }
     }
     if (metadata?.url) {
@@ -3421,7 +3864,7 @@
     if (videos.length > 0) {
       videos.forEach((vid) => {
         const src = `/api/files/download?path=${encodeURIComponent(vid.path)}`;
-        const isGif = vid.name.includes(".gif.");
+        const isGif = isGifLikeFile(vid.name) || vid.name.includes(".gif.");
         videoHtml += `
         <video controls${isGif ? " autoplay loop muted playsinline" : ""} style="width:100%;max-height:70vh;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);">
           <source src="${src}" />
@@ -3430,9 +3873,28 @@
       `;
       });
     }
+    let externalMediaHtml = "";
+    if (externalMedia.length > 0) {
+      externalMediaHtml = `<div class="reddit-external-media">`;
+      externalMedia.forEach((file) => {
+        const src = `/api/files/download?path=${encodeURIComponent(file.path)}`;
+        if (isVideoFile(file.name)) {
+          const isGif = isGifLikeFile(file.name) || file.name.includes(".gif.");
+          externalMediaHtml += `
+          <video controls${isGif ? " autoplay loop muted playsinline" : ""} style="width:100%;max-height:70vh;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);">
+            <source src="${src}" />
+            Your browser does not support video playback.
+          </video>
+        `;
+        } else if (isImageFile(file.name)) {
+          externalMediaHtml += `<img class="reddit-external-img" src="${src}" alt="${escapeHtml4(file.name)}" loading="lazy" style="width:100%;max-height:70vh;object-fit:contain;border-radius:0.5rem;margin-bottom:1rem;background:var(--muted);" />`;
+        }
+      });
+      externalMediaHtml += `</div>`;
+    }
     let linkCardHtml = "";
     const isLinkPost = metadata?.domain && metadata.domain !== "self." + metadata.subreddit && metadata.domain !== "i.redd.it" && metadata.domain !== "v.redd.it" && metadata.domain !== "reddit.com" && metadata.mediaUrl;
-    if (isLinkPost && metadata?.mediaUrl) {
+    if (isLinkPost && metadata?.mediaUrl && externalMedia.length === 0) {
       const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(metadata.domain)}&sz=64`;
       linkCardHtml = `
       <a class="reddit-link-card" href="${escapeHtml4(metadata.mediaUrl)}" target="_blank" rel="noopener noreferrer">
@@ -3446,7 +3908,7 @@
     `;
     }
     let emptyNotice = "";
-    if (images.length === 0 && videos.length === 0 && !metadata?.selftext && !isLinkPost) {
+    if (images.length === 0 && videos.length === 0 && externalMedia.length === 0 && !metadata?.selftext && !isLinkPost) {
       emptyNotice = `
       <div class="reddit-empty" style="padding:2rem">
         <div class="reddit-empty-icon">\u{1F4DD}</div>
@@ -3455,16 +3917,24 @@
     `;
     }
     container.innerHTML = `
-    <div class="reddit-post">
+    <div class="reddit-post${postWrapperClass}">
       ${headerHtml}
       ${selftextHtml}
+      <div id="reddit-post-edit-history-slot"></div>
       ${linkCardHtml}
+      ${externalMediaHtml}
       ${videoHtml}
       ${galleryHtml}
       ${emptyNotice}
       <div id="reddit-comments-container"></div>
     </div>
   `;
+    if (metadata?.editHistory && metadata.editHistory.length > 0) {
+      const slot = container.querySelector("#reddit-post-edit-history-slot");
+      if (slot) {
+        slot.appendChild(renderPostEditHistory(metadata.editHistory));
+      }
+    }
     if (images.length > 0) {
       const imageUrls = images.map((img) => ({
         src: `/api/files/download?path=${encodeURIComponent(img.path)}`,
@@ -3577,9 +4047,6 @@
     if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
-  }
-  function isImageFile4(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
   }
   var REPLY_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
   var REPOST_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
@@ -3757,7 +4224,7 @@
   async function enrichBlueskyPost(api, stub) {
     const files = await api.fetchFiles(stub.path);
     const images = files.filter(
-      (f) => !f.isDirectory && isImageFile4(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+      (f) => !f.isDirectory && isImageFile(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
     );
     const videoFile = files.find(
       (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
@@ -3993,9 +4460,6 @@
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
   }
-  function isImageFile5(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-  }
   var REPLY_ICON2 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
   var REPOST_ICON2 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
   var LIKE_ICON2 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
@@ -4138,7 +4602,7 @@
       return;
     }
     const images = files.filter(
-      (f) => !f.isDirectory && isImageFile5(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
+      (f) => !f.isDirectory && isImageFile(f.name) && f.name !== "Video Thumbnail.jpg" && f.name !== "Thumbnail.jpg"
     );
     const videoFile = files.find(
       (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
@@ -4322,9 +4786,6 @@
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
   }
-  function isImageFile6(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-  }
   var REPLY_ICON3 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
   var RETWEET_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
   var LIKE_ICON3 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
@@ -4494,7 +4955,7 @@
   async function enrichTwitterPost(api, stub) {
     const files = await api.fetchFiles(stub.path);
     const images = files.filter(
-      (f) => !f.isDirectory && isImageFile6(f.name) && f.name !== "Video Thumbnail.jpg"
+      (f) => !f.isDirectory && isImageFile(f.name) && f.name !== "Video Thumbnail.jpg"
     );
     const videoFile = files.find(
       (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
@@ -4697,9 +5158,6 @@
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
   }
-  function isImageFile7(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-  }
   var REPLY_ICON4 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
   var RETWEET_ICON2 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
   var LIKE_ICON4 = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
@@ -4787,7 +5245,7 @@
       return;
     }
     const images = files.filter(
-      (f) => !f.isDirectory && isImageFile7(f.name) && f.name !== "Video Thumbnail.jpg"
+      (f) => !f.isDirectory && isImageFile(f.name) && f.name !== "Video Thumbnail.jpg"
     );
     const videoFile = files.find(
       (f) => !f.isDirectory && /\.(mp4|webm)$/i.test(f.name)
