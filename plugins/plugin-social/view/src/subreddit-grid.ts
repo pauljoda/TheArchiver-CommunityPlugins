@@ -1,6 +1,6 @@
 import type { PluginViewAPI, SubredditInfo } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
-import { nextFrame } from "./async-utils";
+import { mapLimit, nextFrame } from "./async-utils";
 import { isImageFile } from "../../../_shared/view/media-player";
 
 function escapeHtml(text: string): string {
@@ -16,6 +16,34 @@ const METADATA_FILES = new Set([
   "icon.webp",
   ".no-icon",
 ]);
+
+/**
+ * Cheap "does this folder have any real content?" probe. Returns true when
+ * the folder is effectively empty (only metadata files like `icon.png`, no
+ * sub-directories, no post data). Used to pre-filter the grid so icon-only
+ * folders left behind by the upvoted-run icon fetcher never become cards
+ * in the first place — which eliminates the render-then-remove flicker.
+ *
+ * A single `fetchFiles` call per folder is cheap enough to run with
+ * concurrency against ~dozens of folders upfront.
+ */
+async function isFolderEmpty(
+  api: PluginViewAPI,
+  dirPath: string
+): Promise<boolean> {
+  try {
+    const files = await api.fetchFiles(dirPath);
+    const hasDirs = files.some((f) => f.isDirectory);
+    const hasRealFiles = files.some(
+      (f) => !f.isDirectory && !METADATA_FILES.has(f.name)
+    );
+    return !hasDirs && !hasRealFiles;
+  } catch {
+    // If we can't list the folder, treat it as non-empty so we don't
+    // accidentally hide folders the user actually cares about.
+    return false;
+  }
+}
 
 async function loadSubredditInfo(
   api: PluginViewAPI,
@@ -198,7 +226,30 @@ export async function renderSubredditGrid(
   container.innerHTML = `<div class="reddit-loading">Loading...</div>`;
 
   const entries = await api.fetchFiles(rootPath);
-  const dirs = entries.filter((e) => e.isDirectory);
+  const allDirs = entries.filter((e) => e.isDirectory);
+
+  if (allDirs.length === 0) {
+    container.innerHTML = `
+      <div class="reddit-empty">
+        <div class="reddit-empty-icon">📭</div>
+        <span>No content found</span>
+      </div>
+    `;
+    return;
+  }
+
+  // ── Pre-filter pass: drop icon-only / fully-empty folders BEFORE rendering ──
+  // These are leftovers from the upvoted-run subreddit icon fetcher. Hiding
+  // them during the hydration pass (as we did before) caused a visible
+  // render-then-remove cascade. Probing upfront with a single concurrent
+  // fetchFiles-per-dir costs ~50-200ms on local disk for ~50 folders, which
+  // is worth paying for a clean render.
+  container.innerHTML = `<div class="reddit-loading">Loading…</div>`;
+
+  const emptyFlags = await mapLimit(allDirs, 8, (dir) =>
+    isFolderEmpty(api, dir.path)
+  );
+  const dirs = allDirs.filter((_dir, i) => !emptyFlags[i]);
 
   if (dirs.length === 0) {
     container.innerHTML = `
@@ -266,16 +317,7 @@ export async function renderSubredditGrid(
           const info = await loadSubredditInfo(api, entry);
           const card = cardsByPath.get(entry.path);
           if (card?.isConnected) {
-            if (info.isEmpty) {
-              // Icon-only leftover from an upvoted-run subreddit icon fetch
-              // (or any other empty folder). Remove the card outright so the
-              // Social Browser root stays clean.
-              card.remove();
-              cardsByPath.delete(entry.path);
-              entriesByPath.delete(entry.path);
-            } else {
-              updateSubredditCard(card, info);
-            }
+            updateSubredditCard(card, info);
           }
         } finally {
           activeHydrators -= 1;

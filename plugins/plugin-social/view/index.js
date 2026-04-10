@@ -2425,6 +2425,18 @@
     "icon.webp",
     ".no-icon"
   ]);
+  async function isFolderEmpty(api, dirPath) {
+    try {
+      const files = await api.fetchFiles(dirPath);
+      const hasDirs = files.some((f) => f.isDirectory);
+      const hasRealFiles = files.some(
+        (f) => !f.isDirectory && !METADATA_FILES.has(f.name)
+      );
+      return !hasDirs && !hasRealFiles;
+    } catch {
+      return false;
+    }
+  }
   async function loadSubredditInfo(api, entry) {
     const files = await api.fetchFiles(entry.path);
     const dirs = files.filter((f) => f.isDirectory);
@@ -2551,7 +2563,23 @@
   async function renderSubredditGrid(container, api, rootPath, onNavigate) {
     container.innerHTML = `<div class="reddit-loading">Loading...</div>`;
     const entries = await api.fetchFiles(rootPath);
-    const dirs = entries.filter((e) => e.isDirectory);
+    const allDirs = entries.filter((e) => e.isDirectory);
+    if (allDirs.length === 0) {
+      container.innerHTML = `
+      <div class="reddit-empty">
+        <div class="reddit-empty-icon">\u{1F4ED}</div>
+        <span>No content found</span>
+      </div>
+    `;
+      return;
+    }
+    container.innerHTML = `<div class="reddit-loading">Loading\u2026</div>`;
+    const emptyFlags = await mapLimit(
+      allDirs,
+      8,
+      (dir) => isFolderEmpty(api, dir.path)
+    );
+    const dirs = allDirs.filter((_dir, i) => !emptyFlags[i]);
     if (dirs.length === 0) {
       container.innerHTML = `
       <div class="reddit-empty">
@@ -2604,13 +2632,7 @@
             const info = await loadSubredditInfo(api, entry);
             const card = cardsByPath.get(entry.path);
             if (card?.isConnected) {
-              if (info.isEmpty) {
-                card.remove();
-                cardsByPath.delete(entry.path);
-                entriesByPath.delete(entry.path);
-              } else {
-                updateSubredditCard(card, info);
-              }
+              updateSubredditCard(card, info);
             }
           } finally {
             activeHydrators -= 1;

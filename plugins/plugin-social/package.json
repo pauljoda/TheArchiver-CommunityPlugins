@@ -1,12 +1,12 @@
 {
   "name": "plugin-social",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "private": true,
   "scripts": {
     "sync:shared": "node ../../scripts/sync-shared.mjs plugin-social",
     "build": "npm run sync:shared && tsc && node view/build.js",
     "build:view": "node view/build.js",
-    "deploy": "npm run sync:shared && tsc && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/view && cp dist/*.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-social/ && if [ -d dist/_shared ]; then mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/_shared && cp -R dist/_shared/* $HOME/Dev/TheArchiver/plugins/plugin-social/_shared/; fi && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-social/view/ && if [ -d $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social ]; then cp dist/*.js manifest.json $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/ && if [ -d dist/_shared ]; then mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/_shared && cp -R dist/_shared/* $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/_shared/; fi && mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view && cp view/index.js $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view/; fi",
+    "deploy": "npm run sync:shared && tsc && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/view && cp dist/*.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-social/ && if [ -d dist/_shared ]; then mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-social/_shared && cp -R dist/_shared/* $HOME/Dev/TheArchiver/plugins/plugin-social/_shared/; fi && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-social/view/ && if [ -d $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social ]; then cp dist/*.js manifest.json $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/ && if [ -d dist/_shared ]; then mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/_shared && cp -R dist/_shared/* $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/_shared/; fi && mkdir -p $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view && cp view/index.js $HOME/Dev/TheArchiver/.next/standalone/plugins/plugin-social/view/; fi && (curl -fsS -X POST \"${THEARCHIVER_URL:-http://localhost:3000}/api/plugins/reload\" -o /dev/null && echo '[deploy] Plugin host reloaded' || echo '[deploy] Warn: could not reach host at ${THEARCHIVER_URL:-http://localhost:3000} — restart TheArchiver manually to pick up manifest changes')",
     "package": "npm run sync:shared && tsc && node view/build.js && rm -rf dist/package && mkdir -p dist/package/view && cp dist/*.js manifest.json dist/package/ && if [ -d dist/_shared ]; then cp -R dist/_shared dist/package/; fi && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-social.zip ."
   },
   "devDependencies": {
