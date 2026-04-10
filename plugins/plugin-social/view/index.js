@@ -2432,6 +2432,7 @@
       (f) => !f.isDirectory && !METADATA_FILES.has(f.name)
     );
     const postCount = dirs.length;
+    const isEmpty = dirs.length === 0 && contentFiles.length === 0;
     let preview = { type: "empty" };
     const hasPostContent = contentFiles.some((f) => f.name === "Post.nfo") || contentFiles.some((f) => isImageFile(f.name));
     if (hasPostContent) {
@@ -2484,6 +2485,7 @@
       name: entry.name,
       path: entry.path,
       postCount,
+      isEmpty,
       preview
     };
   }
@@ -2510,36 +2512,16 @@
         return `<div class="reddit-card-thumb-placeholder">${isUser ? "\u{1F464}" : "\u{1F4C1}"}</div>`;
     }
   }
-  var PLATFORM_FOLDERS = /* @__PURE__ */ new Set(["reddit", "bluesky", "twitter"]);
-  function getDisplayName(sub, depth) {
-    const nameLower = sub.name.toLowerCase();
-    const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-    const isUser = !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
-    if (isPlatformFolder || depth === 0) {
-      return sub.name;
-    }
-    if (isUser) {
-      return "u/" + sub.name.replace(/^u[_/]/, "");
-    }
-    const pathLower = sub.path.toLowerCase();
-    const inBluesky = pathLower.includes("/bluesky/");
-    const inTwitter = pathLower.includes("/twitter/");
-    return inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
-  }
-  function createSubredditCard(entry, depth) {
+  function createSubredditCard(entry) {
     const card = document.createElement("div");
     card.className = "reddit-card reddit-card-loading";
     card.dataset.path = entry.path;
-    const displayName = getDisplayName(entry, depth);
-    const nameLower = entry.name.toLowerCase();
-    const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-    const isUser = !isPlatformFolder && (entry.name.startsWith("u_") || entry.name.startsWith("u/"));
     card.innerHTML = `
     <div class="reddit-card-preview-slot">
-      ${renderPreview({ type: "empty" }, isUser)}
+      ${renderPreview({ type: "empty" }, false)}
     </div>
     <div class="reddit-card-body">
-      <div class="reddit-card-title">${escapeHtml(displayName)}</div>
+      <div class="reddit-card-title">${escapeHtml(entry.name)}</div>
       <div class="reddit-card-meta">
         <span class="reddit-card-meta-item">Loading\u2026</span>
       </div>
@@ -2547,18 +2529,15 @@
   `;
     return card;
   }
-  function updateSubredditCard(card, sub, depth) {
-    const nameLower = sub.name.toLowerCase();
-    const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-    const isUser = !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
+  function updateSubredditCard(card, sub) {
     const previewSlot = card.querySelector(".reddit-card-preview-slot");
     const title = card.querySelector(".reddit-card-title");
     const meta = card.querySelector(".reddit-card-meta");
     if (previewSlot) {
-      previewSlot.innerHTML = renderPreview(sub.preview, isUser);
+      previewSlot.innerHTML = renderPreview(sub.preview, false);
     }
     if (title) {
-      title.textContent = getDisplayName(sub, depth);
+      title.textContent = sub.name;
     }
     if (meta) {
       meta.innerHTML = `
@@ -2585,7 +2564,6 @@
     const tracked = api.trackedDirectory.replace(/\/+$/, "");
     const current = rootPath.replace(/\/+$/, "");
     const isTopLevel = current === tracked;
-    const depth = isTopLevel ? 0 : current.slice(tracked.length + 1).split("/").filter(Boolean).length;
     const heading = isTopLevel ? `${dirs.length} archived` : `${rootPath.split("/").pop()} \u2014 ${dirs.length} items`;
     container.innerHTML = "";
     const headingEl = document.createElement("div");
@@ -2599,7 +2577,7 @@
     const entriesByPath = /* @__PURE__ */ new Map();
     dirs.forEach((dir) => {
       entriesByPath.set(dir.path, dir);
-      const card = createSubredditCard(dir, depth);
+      const card = createSubredditCard(dir);
       cardsByPath.set(dir.path, card);
       grid.appendChild(card);
     });
@@ -2626,7 +2604,13 @@
             const info = await loadSubredditInfo(api, entry);
             const card = cardsByPath.get(entry.path);
             if (card?.isConnected) {
-              updateSubredditCard(card, info, depth);
+              if (info.isEmpty) {
+                card.remove();
+                cardsByPath.delete(entry.path);
+                entriesByPath.delete(entry.path);
+              } else {
+                updateSubredditCard(card, info);
+              }
             }
           } finally {
             activeHydrators -= 1;
@@ -3160,7 +3144,7 @@
     profileHeader.innerHTML = `
     ${avatarHtml}
     <div class="rdt-profile-info">
-      <h2 class="rdt-profile-name">r/${escapeHtml2(subredditName)}</h2>
+      <h2 class="rdt-profile-name">${escapeHtml2(subredditName)}</h2>
       <span class="rdt-profile-count">${postDirs.length} archived posts</span>
     </div>
   `;

@@ -28,6 +28,10 @@ async function loadSubredditInfo(
   );
 
   const postCount = dirs.length;
+  // A folder is "empty" if it has no sub-directories and no non-metadata
+  // files. This catches icon-only leftovers from the upvoted-run subreddit
+  // icon fetcher (`<redditRoot>/<subreddit>/icon.png` with no posts inside).
+  const isEmpty = dirs.length === 0 && contentFiles.length === 0;
   let preview: SubredditInfo["preview"] = { type: "empty" };
 
   // Check if this directory's children are sub-directories (like user/{subreddit}/)
@@ -102,6 +106,7 @@ async function loadSubredditInfo(
     name: entry.name,
     path: entry.path,
     postCount,
+    isEmpty,
     preview,
   };
 }
@@ -136,51 +141,19 @@ function renderPreview(
   }
 }
 
-/** Known platform folder names that should never get a prefix */
-const PLATFORM_FOLDERS = new Set(["reddit", "bluesky", "twitter"]);
-
-function getDisplayName(sub: Pick<SubredditInfo, "name" | "path">, depth: number): string {
-  const nameLower = sub.name.toLowerCase();
-  const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-  const isUser =
-    !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
-
-  if (isPlatformFolder || depth === 0) {
-    // Top-level: platform folders like "Reddit", "Bluesky", "Twitter" — no prefix
-    return sub.name;
-  }
-
-  if (isUser) {
-    return "u/" + sub.name.replace(/^u[_/]/, "");
-  }
-
-  // Inside a platform folder — use platform-appropriate prefix
-  const pathLower = sub.path.toLowerCase();
-  const inBluesky = pathLower.includes("/bluesky/");
-  const inTwitter = pathLower.includes("/twitter/");
-  return inBluesky || inTwitter ? "@" + sub.name : "r/" + sub.name;
-}
-
 function createSubredditCard(
-  entry: { name: string; path: string },
-  depth: number
+  entry: { name: string; path: string }
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "reddit-card reddit-card-loading";
   card.dataset.path = entry.path;
 
-  const displayName = getDisplayName(entry, depth);
-  const nameLower = entry.name.toLowerCase();
-  const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-  const isUser =
-    !isPlatformFolder && (entry.name.startsWith("u_") || entry.name.startsWith("u/"));
-
   card.innerHTML = `
     <div class="reddit-card-preview-slot">
-      ${renderPreview({ type: "empty" }, isUser)}
+      ${renderPreview({ type: "empty" }, false)}
     </div>
     <div class="reddit-card-body">
-      <div class="reddit-card-title">${escapeHtml(displayName)}</div>
+      <div class="reddit-card-title">${escapeHtml(entry.name)}</div>
       <div class="reddit-card-meta">
         <span class="reddit-card-meta-item">Loading…</span>
       </div>
@@ -190,25 +163,20 @@ function createSubredditCard(
   return card;
 }
 
-function updateSubredditCard(
-  card: HTMLElement,
-  sub: SubredditInfo,
-  depth: number
-): void {
-  const nameLower = sub.name.toLowerCase();
-  const isPlatformFolder = PLATFORM_FOLDERS.has(nameLower);
-  const isUser =
-    !isPlatformFolder && (sub.name.startsWith("u_") || sub.name.startsWith("u/"));
-
+function updateSubredditCard(card: HTMLElement, sub: SubredditInfo): void {
   const previewSlot = card.querySelector<HTMLElement>(".reddit-card-preview-slot");
   const title = card.querySelector<HTMLElement>(".reddit-card-title");
   const meta = card.querySelector<HTMLElement>(".reddit-card-meta");
 
   if (previewSlot) {
-    previewSlot.innerHTML = renderPreview(sub.preview, isUser);
+    previewSlot.innerHTML = renderPreview(sub.preview, false);
   }
   if (title) {
-    title.textContent = getDisplayName(sub, depth);
+    // Just use the folder name as it lives on disk — no "r/" / "u/" / "@"
+    // prefixing. The previous logic mis-guessed user folders and special
+    // subfolders like "Upvoted", so dropping it entirely gives the user
+    // exactly what they see on disk.
+    title.textContent = sub.name;
   }
   if (meta) {
     meta.innerHTML = `
@@ -242,15 +210,10 @@ export async function renderSubredditGrid(
     return;
   }
 
-  // Determine heading and depth
+  // Heading
   const tracked = api.trackedDirectory.replace(/\/+$/, "");
   const current = rootPath.replace(/\/+$/, "");
   const isTopLevel = current === tracked;
-
-  // Depth: 0 = top level (showing platform folders), 1+ = inside a platform
-  const depth = isTopLevel
-    ? 0
-    : current.slice(tracked.length + 1).split("/").filter(Boolean).length;
 
   const heading = isTopLevel
     ? `${dirs.length} archived`
@@ -272,7 +235,7 @@ export async function renderSubredditGrid(
 
   dirs.forEach((dir) => {
     entriesByPath.set(dir.path, dir);
-    const card = createSubredditCard(dir, depth);
+    const card = createSubredditCard(dir);
     cardsByPath.set(dir.path, card);
     grid.appendChild(card);
   });
@@ -303,7 +266,16 @@ export async function renderSubredditGrid(
           const info = await loadSubredditInfo(api, entry);
           const card = cardsByPath.get(entry.path);
           if (card?.isConnected) {
-            updateSubredditCard(card, info, depth);
+            if (info.isEmpty) {
+              // Icon-only leftover from an upvoted-run subreddit icon fetch
+              // (or any other empty folder). Remove the card outright so the
+              // Social Browser root stays clean.
+              card.remove();
+              cardsByPath.delete(entry.path);
+              entriesByPath.delete(entry.path);
+            } else {
+              updateSubredditCard(card, info);
+            }
           }
         } finally {
           activeHydrators -= 1;

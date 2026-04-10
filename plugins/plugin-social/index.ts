@@ -210,7 +210,7 @@ function buildRedditAccountTestActions(): Record<
 
 const plugin: ArchiverPlugin = {
   name: "Socials",
-  version: "1.10.0",
+  version: "1.10.1",
   description:
     "Download images, galleries, and metadata from social media platforms",
   urlPatterns: [

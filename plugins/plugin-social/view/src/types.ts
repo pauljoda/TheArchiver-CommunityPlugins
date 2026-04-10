@@ -109,6 +109,13 @@ export interface SubredditInfo {
   name: string;
   path: string;
   postCount: number;
+  /**
+   * True when the folder contains only metadata files (e.g. just an
+   * `icon.png` left over from the upvoted-run subreddit-icon fetcher) and
+   * has no child directories or real content. The grid removes these
+   * cards so they don't clutter the Social Browser root.
+   */
+  isEmpty: boolean;
   /** Preview type determines how the card thumbnail area renders */
   preview:
     | { type: "image"; src: string }

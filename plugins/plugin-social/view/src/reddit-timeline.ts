@@ -612,7 +612,7 @@ export async function renderRedditTimeline(
   profileHeader.innerHTML = `
     ${avatarHtml}
     <div class="rdt-profile-info">
-      <h2 class="rdt-profile-name">r/${escapeHtml(subredditName)}</h2>
+      <h2 class="rdt-profile-name">${escapeHtml(subredditName)}</h2>
       <span class="rdt-profile-count">${postDirs.length} archived posts</span>
     </div>
   `;
