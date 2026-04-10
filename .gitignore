@@ -6,3 +6,5 @@ node_modules/
 __pycache__/
 plugins/*/dist/
 plugins/*/node_modules/
+# Synced shared runtime code — source of truth lives at plugins/_shared/runtime/
+plugins/*/_shared/
