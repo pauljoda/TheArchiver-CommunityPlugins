@@ -103,6 +103,19 @@ The app compares the **version string** in root `plugins.json` for each entry to
 
 **Note:** GitHub `raw` URLs can lag by a short time after push; the app fetches the registry with `cache: no-store`, but a refresh or retry may be needed immediately after publishing.
 
+### “Publish release” (agent shorthand)
+
+When the user asks to **publish release**, **release the plugin**, or similar for this repository, treat it as an end-to-end registry publish unless they narrow the scope (e.g. one plugin only):
+
+1. **Bump the version** for each plugin being released (see **Versioning** above): hand-edit `manifest.json` + `package.json`, or for `manifest-gen.ts` plugins edit `manifest-gen.ts` + `package.json` and let the build regenerate `manifest.json`.
+2. From the **repository root**, run **`npm run distribute:{name}`** once per plugin (e.g. `distribute:youtube`). That builds, writes `dist/plugin-{name}.zip`, and regenerates root **`plugins.json`**.
+3. Update the **Current Plugins** table at the bottom of this file if any released version changed (`CLAUDE.md` is a symlink to this file).
+4. **`git add`** the touched plugin tree (including regenerated `manifest.json` and `package-lock.json` if it changed), **`dist/plugin-{name}.zip`** for each release, and root **`plugins.json`**. Do **not** commit unrelated `dist/*.zip` churn.
+5. **Commit** with a message that names the plugin(s) and new version(s).
+6. **`git push`** to **`main`** (the app’s default registry follows `main`).
+
+For a single combined release touching multiple plugins, bump each plugin, run `distribute:{name}` for each, then one commit containing all artifacts.
+
 ## Local Development
 
 For live development without manually deploying after every change:
@@ -123,4 +136,4 @@ Versions below mirror `plugins.json`; bump them when you release.
 | `plugin-archive-org` | 2.0.2 | Download content from Archive.org |
 | `plugin-gallery-dl` | 2.0.1 | Multi-site image/media downloader (400+ sites) |
 | `plugin-social` | 1.5.5 | Reddit, Bluesky, Twitter/X downloader with Social Browser view |
-| `plugin-youtube` | 2.1.1 | yt-dlp wrapper for YouTube, Twitch, TikTok, and 1800+ sites |
+| `plugin-youtube` | 2.1.2 | yt-dlp wrapper for YouTube, Twitch, TikTok, and 1800+ sites |
