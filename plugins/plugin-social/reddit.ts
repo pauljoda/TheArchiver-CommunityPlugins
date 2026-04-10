@@ -2441,6 +2441,28 @@ async function handleUserUpvoted(
   // Flat across subreddits — one unified timeline. The "Upvoted" layer keeps
   // these separate from the user's authored posts, which handleUserProfile
   // writes to {username}/{subreddit}/{Post Title}/.
+  //
+  // If the matched account has a custom `upvotedFolder` set in its slot
+  // settings, that path replaces the entire default structure — e.g.
+  // `Archive/alice-upvotes` → <root>/Archive/alice-upvotes/<Post Title>/.
+  // The upvoted sort mode in the Social Browser view still activates because
+  // it's driven by Post.nfo's `upvoted_archived_at` field, not the folder
+  // layout.
+  const upvotedBase = account.upvotedFolder
+    ? path.join(rootDirectory, account.upvotedFolder)
+    : path.join(
+        rootDirectory,
+        saveDir,
+        redditSubfolder,
+        username,
+        "Upvoted"
+      );
+  if (account.upvotedFolder) {
+    logger.info(
+      `Using custom upvoted folder for slot ${account.slot}: ${account.upvotedFolder}`
+    );
+  }
+
   let totalDownloaded = 0;
   let totalSkipped = 0;
   let videoPosts = 0;
@@ -2482,14 +2504,7 @@ async function handleUserUpvoted(
     }
 
     const folderName = postFolderName(post, helpers.string);
-    const postDir = path.join(
-      rootDirectory,
-      saveDir,
-      redditSubfolder,
-      username,
-      "Upvoted",
-      folderName
-    );
+    const postDir = path.join(upvotedBase, folderName);
 
     try {
       const result = await downloadPostToFolder(

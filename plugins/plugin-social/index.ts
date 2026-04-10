@@ -72,13 +72,33 @@ function buildRedditAccountSlotSettings(): PluginSettingDefinition[] {
     });
 
     settings.push({
+      key: `reddit_account_${i}_upvoted_folder`,
+      type: "string",
+      label: `Upvoted Download Folder (optional)`,
+      description:
+        `Custom folder (relative to your main downloads root) where this ` +
+        `account's upvoted posts are saved. Leave blank to use the default: ` +
+        `Socials → Reddit → <username> → Upvoted ` +
+        `(using your Save Directory and Reddit Subfolder settings plus the ` +
+        `verified account username). ` +
+        `Example custom value: Archive/alice-upvotes. ` +
+        `The Social Browser view still renders the folder with the Upvoted ` +
+        `timeline regardless of its location — detection is driven by post ` +
+        `metadata, not by the folder name.`,
+      required: false,
+      defaultValue: "",
+      section,
+      sortOrder: base + 3,
+    });
+
+    settings.push({
       key: `reddit_account_${i}_test`,
       type: "action",
       label: `Test Connection`,
       description:
         `Validates this slot's cookies file by fetching /api/me.json and recording the logged-in username.`,
       section,
-      sortOrder: base + 3,
+      sortOrder: base + 4,
     });
   }
   return settings;
@@ -190,7 +210,7 @@ function buildRedditAccountTestActions(): Record<
 
 const plugin: ArchiverPlugin = {
   name: "Socials",
-  version: "1.8.0",
+  version: "1.10.0",
   description:
     "Download images, galleries, and metadata from social media platforms",
   urlPatterns: [

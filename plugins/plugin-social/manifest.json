@@ -1,6 +1,6 @@
 {
   "name": "Socials",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Download images, galleries, and metadata from social media platforms",
   "author": "TheArchiver",
   "urlPatterns": [
@@ -152,12 +152,22 @@
       "sortOrder": 112
     },
     {
+      "key": "reddit_account_1_upvoted_folder",
+      "type": "string",
+      "label": "Upvoted Download Folder (optional)",
+      "description": "Custom folder (relative to your main downloads root) where this account upvoted posts are saved. Leave blank to use the default: Socials → Reddit → <username> → Upvoted (using your Save Directory and Reddit Subfolder settings plus the verified account username). Example custom value: Archive/alice-upvotes. The Social Browser view still renders the folder with the Upvoted timeline regardless of its location — detection is driven by post metadata, not by the folder name.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 1",
+      "sortOrder": 113
+    },
+    {
       "key": "reddit_account_1_test",
       "type": "action",
       "label": "Test Connection",
       "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
       "section": "Reddit Account 1",
-      "sortOrder": 113
+      "sortOrder": 114
     },
     {
       "key": "reddit_account_2_username",
@@ -193,12 +203,22 @@
       "sortOrder": 122
     },
     {
+      "key": "reddit_account_2_upvoted_folder",
+      "type": "string",
+      "label": "Upvoted Download Folder (optional)",
+      "description": "Custom folder (relative to your main downloads root) where this account upvoted posts are saved. Leave blank to use the default: Socials → Reddit → <username> → Upvoted (using your Save Directory and Reddit Subfolder settings plus the verified account username). Example custom value: Archive/alice-upvotes. The Social Browser view still renders the folder with the Upvoted timeline regardless of its location — detection is driven by post metadata, not by the folder name.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 2",
+      "sortOrder": 123
+    },
+    {
       "key": "reddit_account_2_test",
       "type": "action",
       "label": "Test Connection",
       "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
       "section": "Reddit Account 2",
-      "sortOrder": 123
+      "sortOrder": 124
     },
     {
       "key": "reddit_account_3_username",
@@ -234,12 +254,22 @@
       "sortOrder": 132
     },
     {
+      "key": "reddit_account_3_upvoted_folder",
+      "type": "string",
+      "label": "Upvoted Download Folder (optional)",
+      "description": "Custom folder (relative to your main downloads root) where this account upvoted posts are saved. Leave blank to use the default: Socials → Reddit → <username> → Upvoted (using your Save Directory and Reddit Subfolder settings plus the verified account username). Example custom value: Archive/alice-upvotes. The Social Browser view still renders the folder with the Upvoted timeline regardless of its location — detection is driven by post metadata, not by the folder name.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 3",
+      "sortOrder": 133
+    },
+    {
       "key": "reddit_account_3_test",
       "type": "action",
       "label": "Test Connection",
       "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
       "section": "Reddit Account 3",
-      "sortOrder": 133
+      "sortOrder": 134
     },
     {
       "key": "reddit_account_4_username",
@@ -275,12 +305,22 @@
       "sortOrder": 142
     },
     {
+      "key": "reddit_account_4_upvoted_folder",
+      "type": "string",
+      "label": "Upvoted Download Folder (optional)",
+      "description": "Custom folder (relative to your main downloads root) where this account upvoted posts are saved. Leave blank to use the default: Socials → Reddit → <username> → Upvoted (using your Save Directory and Reddit Subfolder settings plus the verified account username). Example custom value: Archive/alice-upvotes. The Social Browser view still renders the folder with the Upvoted timeline regardless of its location — detection is driven by post metadata, not by the folder name.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 4",
+      "sortOrder": 143
+    },
+    {
       "key": "reddit_account_4_test",
       "type": "action",
       "label": "Test Connection",
       "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
       "section": "Reddit Account 4",
-      "sortOrder": 143
+      "sortOrder": 144
     },
     {
       "key": "reddit_account_5_username",
@@ -316,12 +356,22 @@
       "sortOrder": 152
     },
     {
+      "key": "reddit_account_5_upvoted_folder",
+      "type": "string",
+      "label": "Upvoted Download Folder (optional)",
+      "description": "Custom folder (relative to your main downloads root) where this account upvoted posts are saved. Leave blank to use the default: Socials → Reddit → <username> → Upvoted (using your Save Directory and Reddit Subfolder settings plus the verified account username). Example custom value: Archive/alice-upvotes. The Social Browser view still renders the folder with the Upvoted timeline regardless of its location — detection is driven by post metadata, not by the folder name.",
+      "required": false,
+      "defaultValue": "",
+      "section": "Reddit Account 5",
+      "sortOrder": 153
+    },
+    {
       "key": "reddit_account_5_test",
       "type": "action",
       "label": "Test Connection",
       "description": "Validates this slot cookies file by fetching /api/me.json and recording the logged-in username.",
       "section": "Reddit Account 5",
-      "sortOrder": 153
+      "sortOrder": 154
     },
     {
       "key": "bluesky_subfolder",

@@ -417,6 +417,37 @@ export interface RedditAccount {
   verifiedUsername: string;
   /** Absolute path to the Netscape cookies.txt for this account (may be empty). */
   cookiesFile: string;
+  /**
+   * Optional custom folder (relative to the main downloads root) where
+   * upvoted posts for this account are saved. Empty string = use the
+   * default `Socials/Reddit/<username>/Upvoted` layout. See
+   * {@link sanitizeRelativeFolder} for the validation rules.
+   */
+  upvotedFolder: string;
+}
+
+/**
+ * Sanitises a user-provided relative folder path for use as a download
+ * destination. Returns the cleaned value, or "" if the input is empty,
+ * absolute, or contains path-traversal segments. Normalises separators to
+ * "/" so `path.join(root, value)` always produces a child of `root` on any
+ * platform.
+ */
+export function sanitizeRelativeFolder(input: string): string {
+  const raw = (input || "").trim();
+  if (!raw) return "";
+  // Reject absolute paths up front, BEFORE any normalisation. Leading
+  // slash = POSIX absolute; `C:/...` or `\\server\share` = Windows absolute.
+  // We deliberately do NOT silently strip the leading slash — a user who
+  // types "/etc/passwd" is clearly not asking for a relative path.
+  if (/^[/\\]/.test(raw)) return "";
+  if (/^[a-zA-Z]:[/\\]/.test(raw)) return "";
+  // Now safe to strip trailing separators and collapse runs.
+  const trimmed = raw.replace(/[/\\]+$/g, "");
+  if (!trimmed) return "";
+  const segments = trimmed.split(/[/\\]+/);
+  if (segments.some((seg) => seg === ".." || seg === ".")) return "";
+  return segments.join("/");
 }
 
 /**
@@ -438,6 +469,9 @@ export function loadRedditAccountSlots(
       configuredUsername: (settings.get(`reddit_account_${i}_username`) || "").trim(),
       verifiedUsername: (settings.get(`reddit_account_${i}_verified_username`) || "").trim(),
       cookiesFile: (settings.get(`reddit_account_${i}_cookies_file`) || "").trim(),
+      upvotedFolder: sanitizeRelativeFolder(
+        settings.get(`reddit_account_${i}_upvoted_folder`) || ""
+      ),
     });
   }
   return slots;
