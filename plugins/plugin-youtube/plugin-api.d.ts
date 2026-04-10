@@ -151,7 +151,7 @@ export interface PluginHelpers {
       defaultFolder: string,
       siteDirectoriesJson: string | null,
       logger: PluginLogger,
-      options?: { subDir?: string }
+      options?: { prependDefaultFolder?: boolean }
     ): string;
   };
   string: {

@@ -873,7 +873,7 @@ const plugin = definePlugin({
     }
 
     // ── Resolve output directory ──
-    const outputDir = helpers.url.resolveOutputDir(url, rootDirectory, baseFolder, settings.get("site_directories"), logger);
+    const outputDir = helpers.url.resolveOutputDir(url, rootDirectory, baseFolder, settings.get("site_directories"), logger, { prependDefaultFolder: false });
     await helpers.io.ensureDir(outputDir);
 
     // ── Verify gallery-dl is available ──

@@ -14,7 +14,7 @@
     {
       "id": "gallery-dl",
       "name": "gallery-dl",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "description": "Download images and media from Pixiv, Instagram, DeviantArt, Danbooru, ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
       "author": "TheArchiver",
       "downloadFile": "plugin-gallery-dl.zip",
@@ -32,7 +32,7 @@
     {
       "id": "yt-dlp",
       "name": "yt-dlp",
-      "version": "2.1.2",
+      "version": "2.1.3",
       "description": "Download video and audio from YouTube, Twitch, TikTok, Vimeo, SoundCloud, and 1800+ other sites using yt-dlp",
       "author": "TheArchiver",
       "downloadFile": "plugin-youtube.zip",

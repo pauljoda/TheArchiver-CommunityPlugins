@@ -292,7 +292,8 @@ const plugin = definePlugin({
       rootDirectory,
       libraryFolder,
       settings.get("site_directories"),
-      logger
+      logger,
+      { prependDefaultFolder: false }
     );
     await helpers.io.ensureDir(outputDir);
 
