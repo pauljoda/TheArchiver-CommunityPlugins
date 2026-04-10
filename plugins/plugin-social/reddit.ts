@@ -12,6 +12,7 @@ import {
   loadRedditAccountSlots,
   redditAccountDisplayName,
   resolveRedditCookieHeader,
+  sanitizeRelativeFolder,
   type DownloadResult,
   type DownloadContext,
   type PluginLogger,
@@ -2437,19 +2438,39 @@ async function handleUserUpvoted(
 
   logger.info(`Found ${posts.length} upvoted posts for u/${username}`);
 
-  // Layout: {root}/{saveDir}/{redditSubfolder}/{username}/Upvoted/{Post Title}/
-  // Flat across subreddits — one unified timeline. The "Upvoted" layer keeps
-  // these separate from the user's authored posts, which handleUserProfile
-  // writes to {username}/{subreddit}/{Post Title}/.
+  // ── Resolve destination folder ───────────────────────────────────────
   //
-  // If the matched account has a custom `upvotedFolder` set in its slot
-  // settings, that path replaces the entire default structure — e.g.
+  // Layout: {root}/{saveDir}/{redditSubfolder}/{username}/Upvoted/{Post Title}/
+  //
+  // If the matched account has a custom `upvotedFolder` set, that path
+  // replaces the entire default structure — e.g.
   // `Archive/alice-upvotes` → <root>/Archive/alice-upvotes/<Post Title>/.
-  // The upvoted sort mode in the Social Browser view still activates because
-  // it's driven by Post.nfo's `upvoted_archived_at` field, not the folder
-  // layout.
-  const upvotedBase = account.upvotedFolder
-    ? path.join(rootDirectory, account.upvotedFolder)
+  //
+  // We read the setting DIRECTLY via `settings.get()` here (rather than
+  // relying solely on what findRedditAccountByUsername returned) so the
+  // diagnostic logs below capture the raw host-side value. This lets us
+  // debug "my custom folder isn't being used" reports by comparing:
+  //   1. What the host returns for the setting key
+  //   2. What sanitizeRelativeFolder produces from it
+  //   3. What path is actually picked
+  const rawCustomFolderSetting = settings.get(
+    `reddit_account_${account.slot}_upvoted_folder`
+  );
+  const customFolderSanitized = sanitizeRelativeFolder(
+    (rawCustomFolderSetting as string | undefined | null) || ""
+  );
+  logger.info(
+    `Upvoted folder resolution for slot ${account.slot}: ` +
+      `raw setting value = ${JSON.stringify(rawCustomFolderSetting)}, ` +
+      `sanitised = ${JSON.stringify(customFolderSanitized)}, ` +
+      `account.upvotedFolder = ${JSON.stringify(account.upvotedFolder)}`
+  );
+
+  // Prefer the freshly-read value over the snapshot in `account.upvotedFolder`
+  // so any race between slot load and download start can't serve stale data.
+  const effectiveCustomFolder = customFolderSanitized || account.upvotedFolder;
+  const upvotedBase = effectiveCustomFolder
+    ? path.join(rootDirectory, effectiveCustomFolder)
     : path.join(
         rootDirectory,
         saveDir,
@@ -2457,9 +2478,14 @@ async function handleUserUpvoted(
         username,
         "Upvoted"
       );
-  if (account.upvotedFolder) {
+  if (effectiveCustomFolder) {
     logger.info(
-      `Using custom upvoted folder for slot ${account.slot}: ${account.upvotedFolder}`
+      `Using CUSTOM upvoted folder for slot ${account.slot}: ${effectiveCustomFolder} → ${upvotedBase}`
+    );
+  } else {
+    logger.info(
+      `Using DEFAULT upvoted folder for slot ${account.slot}: ${upvotedBase} ` +
+        `(no custom folder set; raw setting was ${JSON.stringify(rawCustomFolderSetting)})`
     );
   }
 
