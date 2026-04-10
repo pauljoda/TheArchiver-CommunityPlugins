@@ -1,16 +1,16 @@
 import type { CardMediaPreview, FileEntry } from "./types";
+import {
+  isImageFile as sharedIsImageFile,
+  isVideoFile as sharedIsVideoFile,
+  buildFileSrc,
+} from "../../../_shared/view/media-player";
 
-export function isImageFile(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
-}
-
-export function isVideoFile(name: string): boolean {
-  return /\.(mp4|m4v|webm|mov|avi|mkv)$/i.test(name);
-}
-
-export function getFileUrl(path: string): string {
-  return `/api/files/download?path=${encodeURIComponent(path)}`;
-}
+// Re-exports so the rest of plugin-gallery-dl's view code can continue to
+// `import { isImageFile } from "./card-helpers"` unchanged. Implementations
+// live in the shared media player at plugins/_shared/view/media-player.ts.
+export const isImageFile = sharedIsImageFile;
+export const isVideoFile = sharedIsVideoFile;
+export const getFileUrl = buildFileSrc;
 
 export function selectCardMediaPreview(files: FileEntry[]): CardMediaPreview {
   const images = files.filter((file) => !file.isDirectory && isImageFile(file.name));

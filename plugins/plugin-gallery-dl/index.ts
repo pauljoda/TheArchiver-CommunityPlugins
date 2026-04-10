@@ -3,6 +3,10 @@ import fs from "fs";
 import { exec } from "child_process";
 import { urlPatterns } from "./sites";
 import { pluginSettings } from "./settings";
+import {
+  runGalleryDl,
+  checkGalleryDlAvailable,
+} from "./_shared/runtime/gallery-dl-runner";
 import type {
   DownloadResult,
   PluginSettingsAccessor,
@@ -755,7 +759,7 @@ async function runOAuthFlow(
 
 const plugin = definePlugin({
   name: "gallery-dl",
-  version: "1.0.0",
+  version: "2.1.0",
   description:
     "Download images and media from Pixiv, Instagram, DeviantArt, Danbooru, " +
     "ExHentai, Patreon, Kemono, and 400+ other sites using gallery-dl",
@@ -877,15 +881,11 @@ const plugin = definePlugin({
     await helpers.io.ensureDir(outputDir);
 
     // ── Verify gallery-dl is available ──
-    try {
-      const { stdout } = await execAsync("gallery-dl --version");
-      logger.info(`gallery-dl version: ${stdout.trim()}`);
-    } catch {
+    const availability = await checkGalleryDlAvailable(helpers.string, logger);
+    if (!availability.available) {
       return {
         success: false,
-        message:
-          "gallery-dl is not installed or not in PATH. " +
-          "Install via: pip install gallery-dl (or pipx install gallery-dl)",
+        message: availability.message,
       };
     }
 
@@ -906,73 +906,72 @@ const plugin = definePlugin({
       }
     }
 
-    // Write config to temp file
-    const configDir = path.join(outputDir, ".gallery-dl-plugin");
-    await helpers.io.ensureDir(configDir);
-    const configPath = path.join(configDir, "config.json");
-    fs.writeFileSync(configPath, JSON.stringify(finalConfig, null, 2), "utf8");
-    logger.info(`Wrote gallery-dl config: ${configPath}`);
-
-    // ── Build command ──
-    const args: string[] = [];
-
-    // Use our generated config alongside the global config
-    // (--config-ignore skips global, then --config loads ours)
-    args.push("--config-ignore", "--config", helpers.string.shellEscape(configPath));
-
-    // Verbose logging if enabled
+    // ── Assemble extra args ──
+    const extraArgsList: string[] = [];
     if (getBoolSetting(settings, "verbose", false)) {
-      args.push("--verbose");
+      extraArgsList.push("--verbose");
     }
-
-    // Extra user-specified arguments
     const extraArgs = getSetting(settings, "extra_args");
     if (extraArgs) {
-      args.push(extraArgs);
+      // Preserve historical behavior: treat as a single pass-through token so
+      // users can include flag+value pairs. gallery-dl's argv handling copes
+      // with a single string containing spaces via spawn's arg array.
+      extraArgsList.push(extraArgs);
     }
 
-    // The URL to download
-    args.push(helpers.string.shellEscape(url));
+    // ── Run gallery-dl via shared runner ──
+    const runResult = await runGalleryDl({
+      url,
+      outputDir,
+      config: finalConfig as Record<string, unknown>,
+      extraArgs: extraArgsList,
+      // plugin-gallery-dl historically wrote config to
+      // <outputDir>/.gallery-dl-plugin/config.json and left it there. Pass
+      // the same directory so the runner preserves it for debugging.
+      configFileDir: path.join(outputDir, ".gallery-dl-plugin"),
+      // Gallery browser downloads can take a long time (large albums,
+      // slow hosts); give them a generous 30 minute ceiling.
+      timeoutMs: 30 * 60 * 1000,
+      logger,
+      shell: helpers.string,
+      io: helpers.io,
+    });
 
-    const command = `gallery-dl ${args.join(" ")}`;
-    logger.info(`Running: ${command}`);
-
-    try {
-      const { stdout, stderr } = await execAsync(command);
-
-      // Log gallery-dl output
-      if (stdout) {
-        const lines = stdout.split("\n").filter(Boolean);
-        let downloadCount = 0;
-        let skipCount = 0;
-
-        for (const line of lines) {
-          if (line.startsWith("#")) {
-            // gallery-dl outputs filenames prefixed with #
-            downloadCount++;
-            logger.info(`Downloaded: ${line.substring(1).trim()}`);
-          } else if (line.includes("skipping")) {
-            skipCount++;
-          } else {
-            logger.info(line);
-          }
+    // ── Log gallery-dl output in the historical human-friendly format ──
+    if (runResult.stdout) {
+      const lines = runResult.stdout.split("\n").filter(Boolean);
+      let downloadCount = 0;
+      let skipCount = 0;
+      for (const line of lines) {
+        if (line.startsWith("#")) {
+          downloadCount++;
+          logger.info(`Downloaded: ${line.substring(1).trim()}`);
+        } else if (line.includes("skipping")) {
+          skipCount++;
+        } else {
+          logger.info(line);
         }
-
+      }
+      if (downloadCount || skipCount) {
         logger.info(`Downloads: ${downloadCount}, Skipped: ${skipCount}`);
       }
+    }
 
-      if (stderr) {
-        for (const line of stderr.split("\n").filter(Boolean)) {
-          if (line.includes("WARNING") || line.includes("warning")) {
-            logger.warn(line);
-          } else if (line.includes("ERROR") || line.includes("error")) {
-            logger.error(line);
-          } else {
-            logger.info(line);
-          }
+    if (runResult.stderr) {
+      for (const line of runResult.stderr.split("\n").filter(Boolean)) {
+        // Skip Python warnings (InsecureRequestWarning etc.)
+        if (line.includes("Warning:") || line.includes("warnings.warn")) continue;
+        if (line.includes("WARNING") || line.includes("warning")) {
+          logger.warn(line);
+        } else if (line.includes("ERROR") || line.includes("error")) {
+          logger.error(line);
+        } else {
+          logger.info(line);
         }
       }
+    }
 
+    if (runResult.success) {
       // Generate NFO sidecars if enabled
       if (getBoolSetting(settings, "write_info_nfo", false) && getBoolSetting(settings, "write_metadata", true)) {
         try {
@@ -992,65 +991,54 @@ const plugin = definePlugin({
         success: true,
         message: `Downloaded to ${outputDir}`,
       };
-    } catch (error: unknown) {
-      const err = error as Error & { stderr?: string; stdout?: string; code?: number };
-      const errorOutput = sanitizeGalleryDlErrorOutput(
-        err.stderr || err.stdout || err.message
-      );
+    }
 
-      // gallery-dl exit code 1 can mean "no extractor found"
-      if (errorOutput.includes("No suitable extractor")) {
-        logger.error(`No gallery-dl extractor found for: ${url}`);
-        return {
-          success: false,
-          message: `No gallery-dl extractor found for this URL. The site may not be supported, or the URL format may be incorrect.`,
-        };
-      }
+    // ── Error classification (matches pre-refactor behavior) ──
+    const errorOutput = sanitizeGalleryDlErrorOutput(
+      runResult.stderr || runResult.stdout || runResult.message
+    );
 
-      // Authentication errors
-      if (
-        errorOutput.includes("401") ||
-        errorOutput.includes("403") ||
-        errorOutput.includes("authentication") ||
-        errorOutput.includes("login")
-      ) {
-        logger.error(`Authentication required: ${errorOutput}`);
-        return {
-          success: false,
-          message:
-            `Authentication required for this URL. ` +
-            `Please configure credentials in the plugin settings. ` +
-            `Error: ${errorOutput.slice(0, 300)}`,
-        };
-      }
-
-      // Some content was downloaded before the error
-      if (err.stdout && (err.stdout.includes("#") || err.stdout.includes("/"))) {
-        const downloadedLines = err.stdout.split("\n").filter((l: string) => l.startsWith("#") || l.startsWith("/"));
-        const downloaded = downloadedLines.length;
-        logger.warn(`Partial download: ${downloaded} files before error`);
-
-        // Log the actual error from stderr
-        if (err.stderr) {
-          for (const line of err.stderr.split("\n").filter(Boolean)) {
-            // Skip Python warnings (InsecureRequestWarning etc.)
-            if (line.includes("Warning:") || line.includes("warnings.warn")) continue;
-            logger.warn(line);
-          }
-        }
-
-        return {
-          success: true,
-          message: `Partial download: ${downloaded} files downloaded before error. Check logs for details.`,
-        };
-      }
-
-      logger.error(`gallery-dl failed: ${errorOutput}`);
+    // gallery-dl exit code 1 can mean "no extractor found"
+    if (errorOutput.includes("No suitable extractor")) {
+      logger.error(`No gallery-dl extractor found for: ${url}`);
       return {
         success: false,
-        message: `gallery-dl failed: ${errorOutput.slice(0, 500)}`,
+        message: `No gallery-dl extractor found for this URL. The site may not be supported, or the URL format may be incorrect.`,
       };
     }
+
+    // Authentication errors
+    if (
+      errorOutput.includes("401") ||
+      errorOutput.includes("403") ||
+      errorOutput.includes("authentication") ||
+      errorOutput.includes("login")
+    ) {
+      logger.error(`Authentication required: ${errorOutput}`);
+      return {
+        success: false,
+        message:
+          `Authentication required for this URL. ` +
+          `Please configure credentials in the plugin settings. ` +
+          `Error: ${errorOutput.slice(0, 300)}`,
+      };
+    }
+
+    // Some content was downloaded before the error
+    if (runResult.stdout && (runResult.stdout.includes("#") || runResult.downloadedFiles.length > 0)) {
+      const downloaded = runResult.downloadedFiles.length || runResult.stdout.split("\n").filter((l: string) => l.startsWith("#") || l.startsWith("/")).length;
+      logger.warn(`Partial download: ${downloaded} files before error`);
+      return {
+        success: true,
+        message: `Partial download: ${downloaded} files downloaded before error. Check logs for details.`,
+      };
+    }
+
+    logger.error(`gallery-dl failed: ${errorOutput}`);
+    return {
+      success: false,
+      message: `gallery-dl failed: ${errorOutput.slice(0, 500)}`,
+    };
   },
 });
 

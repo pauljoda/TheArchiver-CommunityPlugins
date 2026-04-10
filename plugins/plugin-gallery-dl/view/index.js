@@ -358,16 +358,23 @@
 }
 `;
 
-  // view/src/card-helpers.ts
+  // ../_shared/view/media-player.ts
+  var IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|avif|svg|tiff?)$/i;
+  var VIDEO_EXT_RE = /\.(mp4|m4v|webm|mov|mkv|avi|flv|wmv|ogv)$/i;
   function isImageFile(name) {
-    return /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name);
+    return IMAGE_EXT_RE.test(name);
   }
   function isVideoFile(name) {
-    return /\.(mp4|m4v|webm|mov|avi|mkv)$/i.test(name);
+    return VIDEO_EXT_RE.test(name);
   }
-  function getFileUrl(path) {
-    return `/api/files/download?path=${encodeURIComponent(path)}`;
+  function buildFileSrc(filePath) {
+    return `/api/files/download?path=${encodeURIComponent(filePath)}`;
   }
+
+  // view/src/card-helpers.ts
+  var isImageFile2 = isImageFile;
+  var isVideoFile2 = isVideoFile;
+  var getFileUrl = buildFileSrc;
 
   // view/src/reddit-app.ts
   var MEDIA_RE = /\.(jpe?g|png|gif|webp|bmp|avif|mp4|m4v|webm|mov|avi|mkv)$/i;
@@ -516,7 +523,7 @@
   function renderMediaItem(file, allImages, imageIndex, openFile) {
     const item = document.createElement("div");
     item.className = "gallery-media-item";
-    if (isVideoFile(file.name)) {
+    if (isVideoFile2(file.name)) {
       const video = document.createElement("video");
       video.className = "gallery-media-video";
       video.src = getFileUrl(file.path);
@@ -684,7 +691,7 @@
             filteredMedia.sort((a, b) => b.size - a.size);
             break;
         }
-        const lightboxImages = filteredMedia.filter((f) => isImageFile(f.name)).map((f) => ({ src: getFileUrl(f.path), name: f.name }));
+        const lightboxImages = filteredMedia.filter((f) => isImageFile2(f.name)).map((f) => ({ src: getFileUrl(f.path), name: f.name }));
         const items = [];
         if (!searchTerm) {
           for (const dir of dirs) {
@@ -693,7 +700,7 @@
         }
         let imgIdx = 0;
         for (const file of filteredMedia) {
-          const isImg = isImageFile(file.name);
+          const isImg = isImageFile2(file.name);
           items.push({
             type: "media",
             entry: file,
@@ -727,7 +734,7 @@
                   previewObserver.disconnect();
                   this.api.fetchFiles(item.entry.path).then((children) => {
                     const firstImg = children.find(
-                      (c) => !c.isDirectory && isImageFile(c.name)
+                      (c) => !c.isDirectory && isImageFile2(c.name)
                     );
                     const thumb = card.querySelector(".gallery-folder-thumb");
                     if (firstImg && thumb) {

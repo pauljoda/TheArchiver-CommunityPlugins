@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "declaration": false
   },
-  "include": ["index.ts", "sites.ts", "settings.ts", "manifest-gen.ts"],
+  "include": ["index.ts", "sites.ts", "settings.ts", "manifest-gen.ts", "_shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

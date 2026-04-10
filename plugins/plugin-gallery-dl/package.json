@@ -1,12 +1,13 @@
 {
   "name": "plugin-gallery-dl",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc && node dist/manifest-gen.js && node view/build.js",
+    "sync:shared": "node ../../scripts/sync-shared.mjs plugin-gallery-dl",
+    "build": "npm run sync:shared && tsc && node dist/manifest-gen.js && node view/build.js",
     "build:view": "node view/build.js",
-    "deploy": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/ && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/view && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/view/",
-    "package": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && mkdir -p dist/package/view && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-gallery-dl.zip ."
+    "deploy": "npm run sync:shared && tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/ && if [ -d dist/_shared ]; then mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/_shared && cp -R dist/_shared/* $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/_shared/; fi && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/view && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-gallery-dl/view/",
+    "package": "npm run sync:shared && tsc && node dist/manifest-gen.js && node view/build.js && rm -rf dist/package && mkdir -p dist/package && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && if [ -d dist/_shared ]; then cp -R dist/_shared dist/package/; fi && mkdir -p dist/package/view && cp view/index.js dist/package/view/ && cd dist/package && zip -r ../plugin-gallery-dl.zip ."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
