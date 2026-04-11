@@ -1,6 +1,6 @@
 {
   "name": "Socials",
-  "version": "1.10.3",
+  "version": "1.11.0",
   "description": "Download images, galleries, and metadata from social media platforms",
   "author": "TheArchiver",
   "urlPatterns": [
@@ -17,7 +17,14 @@
     "viewId": "reddit-browser",
     "label": "Social Browser",
     "icon": "MessageSquare",
-    "entryPoint": "view/index.js"
+    "entryPoint": "view/index.js",
+    "additionalDirectorySettingKeys": [
+      "reddit_account_1_upvoted_folder",
+      "reddit_account_2_upvoted_folder",
+      "reddit_account_3_upvoted_folder",
+      "reddit_account_4_upvoted_folder",
+      "reddit_account_5_upvoted_folder"
+    ]
   },
   "settings": [
     {
