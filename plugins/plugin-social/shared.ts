@@ -563,33 +563,50 @@ interface OptionalLogger {
 
 export interface ResolvedRedditCookies {
   cookieHeader: string;
-  /** "live" = read from the host-provided file; "cache" = read from snapshot. */
-  resolvedFrom: "live" | "cache";
-  /** Absolute path of the source that actually supplied the bytes. */
+  /**
+   * "live" = read from the host-provided file.
+   * "setting-blob" = read from the hidden setting (survives Docker restarts).
+   * "cache" = read from filesystem snapshot (legacy, native-only fallback).
+   */
+  resolvedFrom: "live" | "setting-blob" | "cache";
+  /** Description of the source that actually supplied the bytes. */
   sourcePath: string;
+}
+
+export function redditAccountCookiesBlobKey(slot: number): string {
+  return `reddit_account_${slot}_cookies_blob`;
 }
 
 /**
  * Resolves cookies for a Reddit account slot in a reboot-resilient way.
  *
- * Order of operations:
- *   1. If `userPickedPath` exists and yields reddit.com cookies, use those
- *      bytes AND snapshot them to the plugin's cache at
- *      `~/.thearchiver/plugin-social/accounts/account-<slot>-cookies.txt`
- *      so a subsequent reboot that loses the host's file storage still works.
- *   2. If the user-picked path is missing, unreadable, or empty of
- *      reddit.com cookies, fall back to the cached snapshot.
- *   3. If neither source is available, return null.
+ * Why this matters: the host's `type: "file"` setting storage is not always
+ * persistent — in the Dockerised deployment the uploaded cookies.txt lives
+ * on the container's writable layer and disappears on recreate. So as soon
+ * as we successfully read a live file we stash its contents into a hidden
+ * *string* setting (which IS persistent in the host DB) and ALSO into a
+ * local filesystem cache for native installs.
  *
- * Never throws. Best-effort caching failures (e.g. read-only home dir) are
- * logged via `logger.warn` but don't block the return of a valid header.
+ * Resolution order:
+ *   1. Live file at `userPickedPath` — authoritative whenever present.
+ *   2. Hidden string setting `reddit_account_<slot>_cookies_blob` — persists
+ *      across Docker container restarts because it lives in the host DB.
+ *   3. Filesystem snapshot under `~/.thearchiver/plugin-social/accounts/` —
+ *      legacy layer, only useful on native hosts where `os.homedir()` is
+ *      both stable and writable (doesn't help in a container where HOME is
+ *      the ephemeral writable layer).
+ *
+ * Never throws. Best-effort caching failures are logged via `logger.warn`
+ * but don't block returning a valid header.
  */
-export function resolveRedditCookieHeader(
+export async function resolveRedditCookieHeader(
   slot: number,
   userPickedPath: string,
+  settings: import("./plugin-api").PluginSettingsAccessor,
   logger?: OptionalLogger
-): ResolvedRedditCookies | null {
+): Promise<ResolvedRedditCookies | null> {
   const cachePath = redditAccountCachedCookiesPath(slot);
+  const blobKey = redditAccountCookiesBlobKey(slot);
 
   // 1. Try the user-picked (host-provided) path first
   if (userPickedPath && fs.existsSync(userPickedPath)) {
@@ -597,7 +614,18 @@ export function resolveRedditCookieHeader(
       const content = fs.readFileSync(userPickedPath, "utf8");
       const header = buildCookieHeaderFromContent(content);
       if (header) {
-        // Opportunistic snapshot for reboot resilience
+        // Primary snapshot: hidden string setting (persistent in host DB,
+        // survives Docker container recreates).
+        try {
+          await settings.set(blobKey, content);
+        } catch (err) {
+          logger?.warn?.(
+            `Reddit account ${slot}: failed to snapshot cookies to setting ${blobKey}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+        // Secondary snapshot: filesystem cache (legacy, native-only).
         try {
           fs.mkdirSync(path.dirname(cachePath), { recursive: true });
           fs.writeFileSync(cachePath, content, "utf8");
@@ -608,7 +636,7 @@ export function resolveRedditCookieHeader(
           }
         } catch (err) {
           logger?.warn?.(
-            `Reddit account ${slot}: failed to snapshot cookies to cache (${cachePath}): ${
+            `Reddit account ${slot}: failed to snapshot cookies to fs cache (${cachePath}): ${
               err instanceof Error ? err.message : String(err)
             }`
           );
@@ -628,15 +656,38 @@ export function resolveRedditCookieHeader(
     }
   }
 
-  // 2. Fall back to the plugin-managed snapshot
+  // 2. Fall back to the hidden setting blob (Docker-friendly)
+  const blobContent = (settings.get(blobKey) || "").toString();
+  if (blobContent) {
+    const header = buildCookieHeaderFromContent(blobContent);
+    if (header) {
+      logger?.info?.(
+        `Reddit account ${slot}: using cookies from hidden setting blob (${blobKey}); host-provided file missing or unreadable`
+      );
+      return {
+        cookieHeader: header,
+        resolvedFrom: "setting-blob",
+        sourcePath: `setting:${blobKey}`,
+      };
+    }
+  }
+
+  // 3. Fall back to the filesystem snapshot (legacy)
   if (fs.existsSync(cachePath)) {
     try {
       const content = fs.readFileSync(cachePath, "utf8");
       const header = buildCookieHeaderFromContent(content);
       if (header) {
         logger?.info?.(
-          `Reddit account ${slot}: using cached cookies snapshot (host-provided file is missing or unreadable)`
+          `Reddit account ${slot}: using fs cache snapshot at ${cachePath} (host file and setting blob both unavailable)`
         );
+        // Opportunistically promote the legacy cache into the setting blob
+        // so next time we can skip straight to the Docker-friendly path.
+        try {
+          await settings.set(blobKey, content);
+        } catch {
+          /* best-effort */
+        }
         return {
           cookieHeader: header,
           resolvedFrom: "cache",
@@ -645,7 +696,7 @@ export function resolveRedditCookieHeader(
       }
     } catch (err) {
       logger?.warn?.(
-        `Reddit account ${slot}: cached cookies snapshot at ${cachePath} is unreadable: ${
+        `Reddit account ${slot}: fs cache snapshot at ${cachePath} is unreadable: ${
           err instanceof Error ? err.message : String(err)
         }`
       );

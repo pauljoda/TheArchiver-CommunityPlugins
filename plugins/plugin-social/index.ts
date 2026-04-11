@@ -119,7 +119,7 @@ async function testRedditAccountSlot(
   // a successful read to ~/.thearchiver/plugin-social/accounts/ for reboot
   // resilience, and falls back to the snapshot when the host-provided file is
   // missing (which can happen after a host restart).
-  const resolved = resolveRedditCookieHeader(slot, file, logger);
+  const resolved = await resolveRedditCookieHeader(slot, file, settings, logger);
   if (!resolved) {
     return {
       success: false,
@@ -177,8 +177,10 @@ async function testRedditAccountSlot(
     }
     const snapshotNote =
       resolved.resolvedFrom === "live"
-        ? " Cookies snapshot saved to ~/.thearchiver/plugin-social/ for reboot resilience."
-        : " (used existing cached snapshot — host-provided file was not readable).";
+        ? " Cookies snapshot saved to a hidden plugin setting for reboot resilience (Docker-friendly)."
+        : resolved.resolvedFrom === "setting-blob"
+          ? " (used existing hidden-setting snapshot — host-provided file was not readable)."
+          : " (used existing filesystem snapshot — host-provided file was not readable).";
     return {
       success: true,
       message: `Slot ${slot} connected as u/${name}.${snapshotNote}`,
@@ -210,7 +212,7 @@ function buildRedditAccountTestActions(): Record<
 
 const plugin: ArchiverPlugin = {
   name: "Socials",
-  version: "1.11.0",
+  version: "1.11.1",
   description:
     "Download images, galleries, and metadata from social media platforms",
   urlPatterns: [

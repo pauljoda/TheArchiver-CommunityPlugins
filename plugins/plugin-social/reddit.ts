@@ -2384,22 +2384,23 @@ async function handleUserUpvoted(
     };
   }
 
-  const resolved = resolveRedditCookieHeader(
+  const resolved = await resolveRedditCookieHeader(
     account.slot,
     account.cookiesFile,
+    settings,
     logger
   );
   if (!resolved) {
     const hint = account.cookiesFile
-      ? `The configured cookies file (${account.cookiesFile}) is missing or unreadable, and no cached snapshot is available for slot ${account.slot}.`
-      : `No cookies file is configured for slot ${account.slot} and no cached snapshot exists.`;
+      ? `The configured cookies file (${account.cookiesFile}) is missing or unreadable, and no persisted snapshot is available for slot ${account.slot}.`
+      : `No cookies file is configured for slot ${account.slot} and no persisted snapshot exists.`;
     return {
       success: false,
       message:
         `Account slot ${account.slot} (u/${redditAccountDisplayName(account)}) has no usable cookies. ` +
         `${hint} ` +
         `Re-upload cookies.txt in plugin settings and click Test Connection — the plugin will snapshot ` +
-        `the file to ~/.thearchiver/plugin-social/accounts/ so it survives host reboots next time.`,
+        `the file into a hidden string setting so it survives host/container restarts next time.`,
     };
   }
   const cookieHeader = resolved.cookieHeader;

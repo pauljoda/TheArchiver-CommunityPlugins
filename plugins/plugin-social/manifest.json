@@ -1,6 +1,6 @@
 {
   "name": "Socials",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "description": "Download images, galleries, and metadata from social media platforms",
   "author": "TheArchiver",
   "urlPatterns": [
@@ -169,6 +169,17 @@
       "sortOrder": 113
     },
     {
+      "key": "reddit_account_1_cookies_blob",
+      "type": "string",
+      "label": "Cookies Snapshot (internal)",
+      "description": "Internal reboot-resilience cache — do not edit. Populated automatically when a cookies file is successfully read.",
+      "required": false,
+      "defaultValue": "",
+      "hidden": true,
+      "section": "Reddit Account 1",
+      "sortOrder": 115
+    },
+    {
       "key": "reddit_account_1_test",
       "type": "action",
       "label": "Test Connection",
@@ -218,6 +229,17 @@
       "defaultValue": "",
       "section": "Reddit Account 2",
       "sortOrder": 123
+    },
+    {
+      "key": "reddit_account_2_cookies_blob",
+      "type": "string",
+      "label": "Cookies Snapshot (internal)",
+      "description": "Internal reboot-resilience cache — do not edit. Populated automatically when a cookies file is successfully read.",
+      "required": false,
+      "defaultValue": "",
+      "hidden": true,
+      "section": "Reddit Account 2",
+      "sortOrder": 125
     },
     {
       "key": "reddit_account_2_test",
@@ -271,6 +293,17 @@
       "sortOrder": 133
     },
     {
+      "key": "reddit_account_3_cookies_blob",
+      "type": "string",
+      "label": "Cookies Snapshot (internal)",
+      "description": "Internal reboot-resilience cache — do not edit. Populated automatically when a cookies file is successfully read.",
+      "required": false,
+      "defaultValue": "",
+      "hidden": true,
+      "section": "Reddit Account 3",
+      "sortOrder": 135
+    },
+    {
       "key": "reddit_account_3_test",
       "type": "action",
       "label": "Test Connection",
@@ -322,6 +355,17 @@
       "sortOrder": 143
     },
     {
+      "key": "reddit_account_4_cookies_blob",
+      "type": "string",
+      "label": "Cookies Snapshot (internal)",
+      "description": "Internal reboot-resilience cache — do not edit. Populated automatically when a cookies file is successfully read.",
+      "required": false,
+      "defaultValue": "",
+      "hidden": true,
+      "section": "Reddit Account 4",
+      "sortOrder": 145
+    },
+    {
       "key": "reddit_account_4_test",
       "type": "action",
       "label": "Test Connection",
@@ -371,6 +415,17 @@
       "defaultValue": "",
       "section": "Reddit Account 5",
       "sortOrder": 153
+    },
+    {
+      "key": "reddit_account_5_cookies_blob",
+      "type": "string",
+      "label": "Cookies Snapshot (internal)",
+      "description": "Internal reboot-resilience cache — do not edit. Populated automatically when a cookies file is successfully read.",
+      "required": false,
+      "defaultValue": "",
+      "hidden": true,
+      "section": "Reddit Account 5",
+      "sortOrder": 155
     },
     {
       "key": "reddit_account_5_test",
