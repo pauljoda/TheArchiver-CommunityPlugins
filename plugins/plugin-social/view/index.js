@@ -1499,6 +1499,22 @@
   background: var(--muted);
 }
 
+/* \u2500\u2500 Post Selftext Media (Reddit) \u2500\u2500 */
+.reddit-post-selftext-media {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reddit-post-selftext-media-img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 0.5rem;
+  display: block;
+  background: var(--muted);
+}
+
 /* \u2500\u2500 Reply Media (Bluesky) \u2500\u2500 */
 .bluesky-reply-media {
   padding-left: 2.125rem;
@@ -2098,6 +2114,17 @@
         );
         if (parts.length > 0) changeStatus = parts;
       }
+      let selftextMedia;
+      const selftextMediaEl = root.querySelector("selftext_media");
+      if (selftextMediaEl) {
+        const map = {};
+        selftextMediaEl.querySelectorAll("item").forEach((item) => {
+          const key = item.getAttribute("key");
+          const filename = item.getAttribute("filename");
+          if (key && filename) map[key] = filename;
+        });
+        if (Object.keys(map).length > 0) selftextMedia = map;
+      }
       let editHistory;
       const historyEl = root.querySelector("edit_history");
       if (historyEl) {
@@ -2125,6 +2152,7 @@
         created: text("created"),
         flair: text("flair") || void 0,
         selftext: text("selftext") || void 0,
+        selftextMedia,
         isVideo: bool("is_video"),
         isGallery: bool("is_gallery"),
         numComments: num("num_comments") || void 0,
@@ -3436,14 +3464,14 @@
     details.appendChild(entriesEl);
     return details;
   }
-  function buildCommentMedia(body, media, postPath) {
+  function buildBodyMedia(body, media, postPath, subdir, imgClassName) {
     if (!media || Object.keys(media).length === 0) {
       return { cleanBody: body, mediaEls: [] };
     }
     let cleanBody = body;
     const mediaEls = [];
     for (const [key, filename] of Object.entries(media)) {
-      const src = `/api/files/download?path=${encodeURIComponent(postPath + "/comment_media/" + filename)}`;
+      const src = `/api/files/download?path=${encodeURIComponent(postPath + "/" + subdir + "/" + filename)}`;
       if (key.startsWith("giphy:")) {
         const giphyId = key.replace("giphy:", "");
         const pattern = new RegExp(`!\\[gif\\]\\(giphy\\|${giphyId}(?:\\|[^)]+)?\\)`, "g");
@@ -3462,7 +3490,7 @@
         }
       }
       const img = document.createElement("img");
-      img.className = "reddit-comment-media-img";
+      img.className = imgClassName;
       img.src = src;
       img.alt = "";
       img.loading = "lazy";
@@ -3548,7 +3576,13 @@
       }
     }
     el.appendChild(header);
-    const { cleanBody, mediaEls } = buildCommentMedia(comment.body, comment.media, postPath);
+    const { cleanBody, mediaEls } = buildBodyMedia(
+      comment.body,
+      comment.media,
+      postPath,
+      "comment_media",
+      "reddit-comment-media-img"
+    );
     const bodyEl = document.createElement("div");
     bodyEl.className = "reddit-comment-body";
     bodyEl.innerHTML = renderMarkdown(cleanBody);
@@ -3852,8 +3886,18 @@
     }
     headerHtml += `</div></div>`;
     let selftextHtml = "";
+    let selftextMediaEls = [];
     if (metadata?.selftext) {
-      selftextHtml = `<div class="reddit-post-selftext">${renderMarkdown(metadata.selftext)}</div>`;
+      const { cleanBody, mediaEls } = buildBodyMedia(
+        metadata.selftext,
+        metadata.selftextMedia,
+        postPath,
+        "post_media",
+        "reddit-post-selftext-media-img"
+      );
+      selftextMediaEls = mediaEls;
+      const mediaSlot = mediaEls.length > 0 ? `<div class="reddit-post-selftext-media" id="reddit-post-selftext-media-slot"></div>` : "";
+      selftextHtml = `<div class="reddit-post-selftext">${renderMarkdown(cleanBody)}${mediaSlot}</div>`;
     }
     let galleryHtml = "";
     if (images.length > 0) {
@@ -3935,6 +3979,12 @@
       <div id="reddit-comments-container"></div>
     </div>
   `;
+    if (selftextMediaEls.length > 0) {
+      const slot = container.querySelector("#reddit-post-selftext-media-slot");
+      if (slot) {
+        for (const el of selftextMediaEls) slot.appendChild(el);
+      }
+    }
     if (metadata?.editHistory && metadata.editHistory.length > 0) {
       const slot = container.querySelector("#reddit-post-edit-history-slot");
       if (slot) {

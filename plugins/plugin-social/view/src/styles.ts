@@ -1494,6 +1494,22 @@ const CSS = `
   background: var(--muted);
 }
 
+/* ── Post Selftext Media (Reddit) ── */
+.reddit-post-selftext-media {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reddit-post-selftext-media-img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 0.5rem;
+  display: block;
+  background: var(--muted);
+}
+
 /* ── Reply Media (Bluesky) ── */
 .bluesky-reply-media {
   padding-left: 2.125rem;

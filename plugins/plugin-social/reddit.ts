@@ -1087,7 +1087,8 @@ function buildPostNfo(
   sourceUrl: string,
   xmlEscape: (s: string) => string,
   upvoted?: UpvotedContext,
-  annotation?: PostAnnotation
+  annotation?: PostAnnotation,
+  selftextMedia?: Record<string, string>
 ): string {
   // If the post has been annotated by the change-tracker, the title and
   // selftext written to Post.nfo are the "effective" values — which may
@@ -1152,6 +1153,19 @@ function buildPostNfo(
   // Self-text / post body (uses effective value — see annotation note above)
   if (effectiveSelftext && effectiveSelftext.trim()) {
     lines.push(`  <selftext>${xmlEscape(effectiveSelftext)}</selftext>`);
+  }
+
+  // Selftext media map (post_media/) — mirrors comment media. Each entry is
+  // a key→local-filename pair the view uses to strip the URL from the body
+  // and render the cached image inline.
+  if (selftextMedia && Object.keys(selftextMedia).length > 0) {
+    lines.push(`  <selftext_media>`);
+    for (const [key, filename] of Object.entries(selftextMedia)) {
+      lines.push(
+        `    <item key="${xmlEscape(key)}" filename="${xmlEscape(filename)}" />`
+      );
+    }
+    lines.push(`  </selftext_media>`);
   }
 
   // Media URL
@@ -1366,7 +1380,8 @@ function writePostNfo(
   logger: PluginLogger,
   xmlEscape: (s: string) => string,
   upvoted?: UpvotedContext,
-  runTimestamp?: string
+  runTimestamp?: string,
+  selftextMedia?: Record<string, string>
 ): void {
   const nfoPath = path.join(postDir, "Post.nfo");
   try {
@@ -1392,7 +1407,14 @@ function writePostNfo(
 
       // Raw snapshot first — unannotated, exactly what we fetched. Future
       // runs diff against this file.
-      const rawContent = buildPostNfo(post, sourceUrl, xmlEscape, finalUpvoted);
+      const rawContent = buildPostNfo(
+        post,
+        sourceUrl,
+        xmlEscape,
+        finalUpvoted,
+        undefined,
+        selftextMedia
+      );
       const snapshotName = `Post-${runTimestamp}.nfo`;
       fs.writeFileSync(path.join(postDir, snapshotName), rawContent, "utf8");
 
@@ -1402,7 +1424,8 @@ function writePostNfo(
         sourceUrl,
         xmlEscape,
         finalUpvoted,
-        annotation
+        annotation,
+        selftextMedia
       );
       fs.writeFileSync(nfoPath, mergedContent, "utf8");
 
@@ -1419,7 +1442,14 @@ function writePostNfo(
     }
 
     // Legacy path (should no longer be reached, but kept as a safety net).
-    const content = buildPostNfo(post, sourceUrl, xmlEscape, finalUpvoted);
+    const content = buildPostNfo(
+      post,
+      sourceUrl,
+      xmlEscape,
+      finalUpvoted,
+      undefined,
+      selftextMedia
+    );
     fs.writeFileSync(nfoPath, content, "utf8");
     logger.info(`Wrote NFO: ${nfoPath}`);
   } catch (err) {
@@ -1621,6 +1651,80 @@ function buildCommentImageFilename(
  *     comments, which Reddit returns verbatim in the body text.
  * Returns an array of { key, url, filename } for each media item found.
  */
+/**
+ * Extract media references from a single Reddit markdown body (post selftext
+ * or comment body). Shared between {@link extractCommentMedia} and
+ * {@link downloadSelftextMedia} so both use identical detection rules.
+ */
+function extractMediaFromBody(
+  body: string,
+  sanitize: (s: string) => string
+): Array<{ key: string; url: string; filename: string }> {
+  const items: Array<{ key: string; url: string; filename: string }> = [];
+  if (!body) return items;
+
+  // Track URLs captured via markdown patterns so the raw-URL pass doesn't
+  // double-capture them.
+  const capturedUrls = new Set<string>();
+
+  // 1. ![gif](giphy|ID) / ![gif](giphy|ID|variant)
+  const giphyRegex = /!\[gif\]\(giphy\|([a-zA-Z0-9]+)(?:\|[^)]+)?\)/g;
+  let match;
+  while ((match = giphyRegex.exec(body)) !== null) {
+    const giphyId = match[1];
+    const key = `giphy:${giphyId}`;
+    const url = `https://i.giphy.com/media/${giphyId}/giphy.gif`;
+    const filename = sanitize(`giphy_${giphyId}.gif`);
+    items.push({ key, url, filename });
+  }
+
+  // 2. ![img](URL) markdown syntax — image extensions only
+  const imgRegex = /!\[img\]\((https?:\/\/[^)]+\.(?:jpe?g|png|gif|webp|avif|bmp)(?:\?[^)]*)?)\)/gi;
+  while ((match = imgRegex.exec(body)) !== null) {
+    const imgUrl = match[1];
+    capturedUrls.add(imgUrl);
+    const key = `img:${imgUrl}`;
+    const filename = buildCommentImageFilename(imgUrl, sanitize);
+    items.push({ key, url: imgUrl, filename });
+  }
+
+  // 3. Raw http(s) URLs (auto-linked by Reddit, not wrapped in markdown).
+  // Strip the markdown image/gif syntax first so we don't re-match URLs
+  // embedded inside `![img](...)`.
+  const bodyForRawScan = body
+    .replace(giphyRegex, "")
+    .replace(/!\[img\]\([^)]+\)/g, "");
+
+  const rawUrlRegex = /https?:\/\/[^\s<>"'`\]\)]+/g;
+  let rawMatch: RegExpExecArray | null;
+  const seenInBody = new Set<string>();
+  while ((rawMatch = rawUrlRegex.exec(bodyForRawScan)) !== null) {
+    let url = rawMatch[0].replace(/[.,;:!?)\]]+$/, "");
+    if (!url) continue;
+    if (capturedUrls.has(url)) continue;
+    if (seenInBody.has(url)) continue;
+    seenInBody.add(url);
+
+    let urlObj: URL;
+    try {
+      urlObj = new URL(url);
+    } catch {
+      continue;
+    }
+
+    const host = urlObj.hostname.toLowerCase();
+    const isRedditImageHost = REDDIT_IMAGE_HOSTS.has(host);
+    const hasImageExt = COMMENT_IMAGE_EXT_RE.test(urlObj.pathname);
+    if (!isRedditImageHost && !hasImageExt) continue;
+
+    const key = `img:${url}`;
+    const filename = buildCommentImageFilename(url, sanitize);
+    items.push({ key, url, filename });
+  }
+
+  return items;
+}
+
 function extractCommentMedia(
   comments: Array<CleanComment | MoreComments>,
   sanitize: (s: string) => string
@@ -1631,66 +1735,9 @@ function extractCommentMedia(
     for (const item of list) {
       if ("kind" in item && (item as unknown as { kind: string }).kind === "more") continue;
       const comment = item as CleanComment;
-      const body = comment.body || "";
-      // Track URLs captured via markdown patterns so the raw-URL pass doesn't
-      // double-capture them.
-      const capturedUrls = new Set<string>();
-
-      // 1. ![gif](giphy|ID) / ![gif](giphy|ID|variant)
-      const giphyRegex = /!\[gif\]\(giphy\|([a-zA-Z0-9]+)(?:\|[^)]+)?\)/g;
-      let match;
-      while ((match = giphyRegex.exec(body)) !== null) {
-        const giphyId = match[1];
-        const key = `giphy:${giphyId}`;
-        const url = `https://i.giphy.com/media/${giphyId}/giphy.gif`;
-        const filename = sanitize(`giphy_${giphyId}.gif`);
-        items.push({ key, url, filename, comment });
-      }
-
-      // 2. ![img](URL) markdown syntax — image extensions only
-      const imgRegex = /!\[img\]\((https?:\/\/[^)]+\.(?:jpe?g|png|gif|webp|avif|bmp)(?:\?[^)]*)?)\)/gi;
-      while ((match = imgRegex.exec(body)) !== null) {
-        const imgUrl = match[1];
-        capturedUrls.add(imgUrl);
-        const key = `img:${imgUrl}`;
-        const filename = buildCommentImageFilename(imgUrl, sanitize);
-        items.push({ key, url: imgUrl, filename, comment });
-      }
-
-      // 3. Raw http(s) URLs (auto-linked by Reddit, not wrapped in markdown).
-      // Strip the markdown image/gif syntax first so we don't re-match URLs
-      // embedded inside `![img](...)`.
-      const bodyForRawScan = body
-        .replace(giphyRegex, "")
-        .replace(/!\[img\]\([^)]+\)/g, "");
-
-      const rawUrlRegex = /https?:\/\/[^\s<>"'`\]\)]+/g;
-      let rawMatch: RegExpExecArray | null;
-      const seenInComment = new Set<string>();
-      while ((rawMatch = rawUrlRegex.exec(bodyForRawScan)) !== null) {
-        // Trim trailing punctuation that's almost certainly not part of the URL
-        // (sentence terminators, closing brackets).
-        let url = rawMatch[0].replace(/[.,;:!?)\]]+$/, "");
-        if (!url) continue;
-        if (capturedUrls.has(url)) continue;
-        if (seenInComment.has(url)) continue;
-        seenInComment.add(url);
-
-        let urlObj: URL;
-        try {
-          urlObj = new URL(url);
-        } catch {
-          continue;
-        }
-
-        const host = urlObj.hostname.toLowerCase();
-        const isRedditImageHost = REDDIT_IMAGE_HOSTS.has(host);
-        const hasImageExt = COMMENT_IMAGE_EXT_RE.test(urlObj.pathname);
-        if (!isRedditImageHost && !hasImageExt) continue;
-
-        const key = `img:${url}`;
-        const filename = buildCommentImageFilename(url, sanitize);
-        items.push({ key, url, filename, comment });
+      const bodyItems = extractMediaFromBody(comment.body || "", sanitize);
+      for (const bi of bodyItems) {
+        items.push({ ...bi, comment });
       }
 
       if (comment.replies && comment.replies.length > 0) {
@@ -1780,6 +1827,75 @@ async function downloadCommentMedia(
   } else if (kept > 0) {
     logger.info(`Downloaded ${kept} comment media files`);
   }
+}
+
+/**
+ * Download media referenced in a post's selftext into `post_media/` and
+ * return a key→local-filename map. Mirrors {@link downloadCommentMedia} so the
+ * view can strip URLs from the post body and render local images the same way
+ * it already does for comments.
+ */
+async function downloadSelftextMedia(
+  selftext: string,
+  postDir: string,
+  helpers: DownloadContext["helpers"],
+  maxThreads: number,
+  logger: PluginLogger
+): Promise<Record<string, string>> {
+  const mediaItems = extractMediaFromBody(selftext, helpers.string.sanitizeFilename);
+  if (mediaItems.length === 0) return {};
+
+  const mediaDir = path.join(postDir, "post_media");
+  await helpers.io.ensureDir(mediaDir);
+
+  const map: Record<string, string> = {};
+  const seen = new Set<string>();
+  const downloads: Array<{ url: string; outputPath: string }> = [];
+
+  for (const item of mediaItems) {
+    map[item.key] = item.filename;
+    if (!seen.has(item.filename)) {
+      seen.add(item.filename);
+      const outputPath = path.join(mediaDir, item.filename);
+      if (!(await helpers.io.fileExists(outputPath))) {
+        downloads.push({ url: item.url, outputPath });
+      }
+    }
+  }
+
+  if (downloads.length > 0) {
+    logger.info(`Downloading ${downloads.length} post selftext media files...`);
+    try {
+      await helpers.io.downloadFiles(downloads, maxThreads);
+    } catch (err) {
+      logger.warn(`Some post selftext media downloads failed: ${err}`);
+    }
+  }
+
+  // Drop entries whose file didn't actually land so the view falls back to
+  // the original URL instead of a broken image.
+  let kept = 0;
+  let dropped = 0;
+  for (const item of mediaItems) {
+    const outputPath = path.join(mediaDir, item.filename);
+    const ok = await helpers.io.fileExists(outputPath);
+    if (ok) {
+      kept++;
+    } else {
+      dropped++;
+      delete map[item.key];
+    }
+  }
+
+  if (dropped > 0) {
+    logger.warn(
+      `Post selftext media: ${kept} saved, ${dropped} failed to download (will render as plain URLs)`
+    );
+  } else if (kept > 0) {
+    logger.info(`Downloaded ${kept} post selftext media files`);
+  }
+
+  return map;
 }
 
 // =============================================================================
@@ -2058,7 +2174,14 @@ async function downloadPostToFolder(
   if (isVideoPost(post) && !isGifVideoPost(post)) {
     // Download video with audio muxing via ffmpeg
     await helpers.io.ensureDir(postDir);
-    writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp);
+    const selftextMedia = await downloadSelftextMedia(
+      post.selftext || "",
+      postDir,
+      helpers,
+      context.maxDownloadThreads,
+      logger
+    );
+    writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp, selftextMedia);
     // Video posts don't carry an external media URL, but call the helper
     // anyway — it's a no-op for non-curated hosts.
     await maybeDownloadExternalMedia(context, post, postDir);
@@ -2085,8 +2208,16 @@ async function downloadPostToFolder(
   // Always create folder and save metadata — text-only and link posts are valuable content
   await helpers.io.ensureDir(postDir);
 
+  const selftextMedia = await downloadSelftextMedia(
+    post.selftext || "",
+    postDir,
+    helpers,
+    context.maxDownloadThreads,
+    logger
+  );
+
   // Always save metadata (Post.nfo) — this is the post's primary record
-  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp);
+  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp, selftextMedia);
 
   // External-media archive (redgifs/imgur/streamable/gfycat) — opportunistic,
   // never blocks the native flow on failure.
@@ -2183,7 +2314,14 @@ async function handleSinglePost(
   // One timestamp per post per run — shared between Post.nfo and
   // Comments.json so the change-tracker diffs lockstepped snapshots.
   const runTimestamp = makeRunTimestamp();
-  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, undefined, runTimestamp);
+  const selftextMedia = await downloadSelftextMedia(
+    post.selftext || "",
+    postDir,
+    helpers,
+    context.maxDownloadThreads,
+    logger
+  );
+  writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, undefined, runTimestamp, selftextMedia);
 
   // Opportunistic external-media archive: if this post links to a
   // gallery-dl-supported host (redgifs, imgur, streamable, gfycat), pull the

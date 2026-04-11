@@ -58,6 +58,18 @@ function parseNfoXml(xmlText: string): PostMetadata | null {
       if (parts.length > 0) changeStatus = parts;
     }
 
+    let selftextMedia: Record<string, string> | undefined;
+    const selftextMediaEl = root.querySelector("selftext_media");
+    if (selftextMediaEl) {
+      const map: Record<string, string> = {};
+      selftextMediaEl.querySelectorAll("item").forEach((item) => {
+        const key = item.getAttribute("key");
+        const filename = item.getAttribute("filename");
+        if (key && filename) map[key] = filename;
+      });
+      if (Object.keys(map).length > 0) selftextMedia = map;
+    }
+
     let editHistory: PostEditHistoryEntry[] | undefined;
     const historyEl = root.querySelector("edit_history");
     if (historyEl) {
@@ -86,6 +98,7 @@ function parseNfoXml(xmlText: string): PostMetadata | null {
       created: text("created"),
       flair: text("flair") || undefined,
       selftext: text("selftext") || undefined,
+      selftextMedia,
       isVideo: bool("is_video"),
       isGallery: bool("is_gallery"),
       numComments: num("num_comments") || undefined,

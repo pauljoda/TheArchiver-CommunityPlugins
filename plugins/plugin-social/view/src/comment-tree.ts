@@ -124,11 +124,20 @@ function renderCommentEditHistory(
 }
 
 /**
- * Render embedded media (giphy GIFs, images) from a comment's media map.
+ * Render embedded media (giphy GIFs, images) from a post/comment media map.
  * Strips the ![gif](giphy|...) / ![img](...) patterns from the body and
  * returns the cleaned body + HTML for the media elements.
+ *
+ * `subdir` selects the on-disk media folder (`comment_media` for comments,
+ * `post_media` for post selftext) so the same helper serves both callers.
  */
-function buildCommentMedia(body: string, media: Record<string, string> | undefined, postPath: string): { cleanBody: string; mediaEls: HTMLElement[] } {
+export function buildBodyMedia(
+  body: string,
+  media: Record<string, string> | undefined,
+  postPath: string,
+  subdir: "comment_media" | "post_media",
+  imgClassName: string
+): { cleanBody: string; mediaEls: HTMLElement[] } {
   if (!media || Object.keys(media).length === 0) {
     return { cleanBody: body, mediaEls: [] };
   }
@@ -137,7 +146,7 @@ function buildCommentMedia(body: string, media: Record<string, string> | undefin
   const mediaEls: HTMLElement[] = [];
 
   for (const [key, filename] of Object.entries(media)) {
-    const src = `/api/files/download?path=${encodeURIComponent(postPath + "/comment_media/" + filename)}`;
+    const src = `/api/files/download?path=${encodeURIComponent(postPath + "/" + subdir + "/" + filename)}`;
 
     if (key.startsWith("giphy:")) {
       const giphyId = key.replace("giphy:", "");
@@ -162,7 +171,7 @@ function buildCommentMedia(body: string, media: Record<string, string> | undefin
     }
 
     const img = document.createElement("img");
-    img.className = "reddit-comment-media-img";
+    img.className = imgClassName;
     img.src = src;
     img.alt = "";
     img.loading = "lazy";
@@ -278,7 +287,13 @@ function renderComment(comment: Comment, postPath: string, depth: number, startC
   el.appendChild(header);
 
   // Body
-  const { cleanBody, mediaEls } = buildCommentMedia(comment.body, comment.media, postPath);
+  const { cleanBody, mediaEls } = buildBodyMedia(
+    comment.body,
+    comment.media,
+    postPath,
+    "comment_media",
+    "reddit-comment-media-img"
+  );
   const bodyEl = document.createElement("div");
   bodyEl.className = "reddit-comment-body";
   bodyEl.innerHTML = renderMarkdown(cleanBody);

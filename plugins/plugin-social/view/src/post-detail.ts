@@ -5,7 +5,7 @@ import type {
   PostEditHistoryEntry,
 } from "./types";
 import { fetchPostMetadata } from "./nfo-parser";
-import { renderCommentTree } from "./comment-tree";
+import { renderCommentTree, buildBodyMedia } from "./comment-tree";
 import { renderMarkdown } from "./markdown";
 import {
   isImageFile,
@@ -285,10 +285,24 @@ export async function renderPostDetail(
 
   headerHtml += `</div></div>`;
 
-  // Build selftext
+  // Build selftext. If the downloader cached any embedded images/GIFs under
+  // post_media/, strip the URLs from the body and queue up local <img>s via
+  // the same helper the comment tree uses.
   let selftextHtml = "";
+  let selftextMediaEls: HTMLElement[] = [];
   if (metadata?.selftext) {
-    selftextHtml = `<div class="reddit-post-selftext">${renderMarkdown(metadata.selftext)}</div>`;
+    const { cleanBody, mediaEls } = buildBodyMedia(
+      metadata.selftext,
+      metadata.selftextMedia,
+      postPath,
+      "post_media",
+      "reddit-post-selftext-media-img"
+    );
+    selftextMediaEls = mediaEls;
+    const mediaSlot = mediaEls.length > 0
+      ? `<div class="reddit-post-selftext-media" id="reddit-post-selftext-media-slot"></div>`
+      : "";
+    selftextHtml = `<div class="reddit-post-selftext">${renderMarkdown(cleanBody)}${mediaSlot}</div>`;
   }
 
   // Build gallery
@@ -400,6 +414,14 @@ export async function renderPostDetail(
       <div id="reddit-comments-container"></div>
     </div>
   `;
+
+  // Mount cached selftext media into the slot created above.
+  if (selftextMediaEls.length > 0) {
+    const slot = container.querySelector("#reddit-post-selftext-media-slot") as HTMLElement | null;
+    if (slot) {
+      for (const el of selftextMediaEls) slot.appendChild(el);
+    }
+  }
 
   // Post-level edit history (rendered as DOM because it contains markdown-
   // rendered HTML from prior bodies and uses <details> for collapse).

@@ -60,6 +60,8 @@ export interface PostMetadata {
   created: string;
   flair?: string;
   selftext?: string;
+  /** Map of media key (e.g. "giphy:ID", "img:URL") to local filename under post_media/ */
+  selftextMedia?: Record<string, string>;
   isVideo?: boolean;
   isGallery?: boolean;
   numComments?: number;
