@@ -42,10 +42,11 @@ const CHIP_LABELS: Record<ChangeStatus, string> = {
   new: "NEW",
   edited: "EDITED",
   deleted: "DELETED",
+  removed: "REMOVED",
 };
 
 /** Stacking order for chips when a comment has multiple statuses. */
-const CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted"];
+const CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted", "removed"];
 
 function makeChangeChip(status: ChangeStatus): HTMLElement {
   const chip = document.createElement("span");
@@ -223,10 +224,12 @@ function renderComment(comment: Comment, postPath: string, depth: number, startC
   const el = document.createElement("div");
   el.className = "reddit-comment";
 
-  // Change-tracking background: deleted takes priority over new. Edited has
-  // no background — only a chip + edit-history dropdown.
+  // Change-tracking background: deleted/removed take priority over new.
+  // Edited has no background — only a chip + edit-history dropdown.
+  // "deleted" and "removed" share the same wrapper class (and therefore
+  // the same red palette) — they are distinguished only by the chip label.
   const status = comment.changeStatus ?? [];
-  if (status.includes("deleted")) {
+  if (status.includes("deleted") || status.includes("removed")) {
     el.classList.add("reddit-comment--deleted");
   } else if (status.includes("new")) {
     el.classList.add("reddit-comment--new");

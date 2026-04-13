@@ -31,8 +31,12 @@ export interface PluginViewRegistration {
  * Change-tracking status for a post or comment. Matches the type used
  * server-side in plugin-social/shared.ts. Populated by the diff/merge step
  * in the Reddit downloader when a prior snapshot exists.
+ *
+ * `"deleted"` (user-initiated `[deleted]`) and `"removed"` (moderator
+ * `[removed]`) are mutually exclusive terminal states sharing the same
+ * color palette.
  */
-export type ChangeStatus = "new" | "edited" | "deleted";
+export type ChangeStatus = "new" | "edited" | "deleted" | "removed";
 
 /** A single prior version of a post captured during an edit. */
 export interface PostEditHistoryEntry {

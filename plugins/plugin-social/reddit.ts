@@ -685,6 +685,39 @@ function isDeletionMarker(body: string): boolean {
   return trimmed === "[deleted]" || trimmed === "[removed]";
 }
 
+/**
+ * Classify a deletion marker as either `"deleted"` (user-initiated) or
+ * `"removed"` (moderator-initiated), returning null when the body is not
+ * a deletion marker at all. This is the single source of truth for
+ * distinguishing the two terminal states tracked in `changeStatus`.
+ */
+function deletionMarkerState(body: string): "deleted" | "removed" | null {
+  const trimmed = body.trim();
+  if (trimmed === "[deleted]") return "deleted";
+  if (trimmed === "[removed]") return "removed";
+  return null;
+}
+
+/**
+ * Classify a post's overall deletion state by checking both its selftext
+ * and author fields. Selftext takes precedence because that's the more
+ * specific signal — a post whose body is `[removed]` but whose author is
+ * still intact is a moderator removal, whereas a post whose author is
+ * `[deleted]` but body is still visible is treated as user-deleted.
+ * Returns null when neither field is a deletion marker.
+ */
+function postDeletionState(
+  selftext: string,
+  author: string
+): "deleted" | "removed" | null {
+  const textState = deletionMarkerState(selftext);
+  if (textState) return textState;
+  const trimmedAuthor = (author || "").trim();
+  if (trimmedAuthor === "[deleted]") return "deleted";
+  if (trimmedAuthor === "[removed]") return "removed";
+  return null;
+}
+
 // --- Flatten helpers ------------------------------------------------------
 
 interface FlatCommentRef {
@@ -809,25 +842,33 @@ export function diffAndMergeComments(
     } else {
       const priorBody = prevRaw.body || "";
       const newBody = c.body || "";
-      const newIsDeletionMarker = isDeletionMarker(newBody);
-      const priorWasDeletionMarker = isDeletionMarker(priorBody);
+      const newState = deletionMarkerState(newBody);
+      const priorState = deletionMarkerState(priorBody);
 
-      if (newIsDeletionMarker) {
-        // The fresh fetch shows a deletion marker. Record the "deleted"
-        // transition the first time we see it, and — crucially — ALWAYS
-        // restore the last-known non-deleted body so a comment that stays
-        // deleted across many runs doesn't get overwritten with "[deleted]"
-        // after the first transition run. We never want to lose the
-        // pre-deletion text once we've seen it.
-        if (!priorWasDeletionMarker) {
-          statuses.push("deleted");
+      if (newState) {
+        // The fresh fetch shows a deletion marker. Record the transition
+        // the first time we see it — or when the specific marker flipped
+        // (e.g. user-deleted then mod-removed, or vice versa) — and —
+        // crucially — ALWAYS restore the last-known non-deleted body so a
+        // comment that stays in a terminal state across many runs doesn't
+        // get overwritten with "[deleted]"/"[removed]" after the first
+        // transition run. We never want to lose the pre-deletion text
+        // once we've seen it.
+        if (newState !== priorState) {
+          // "deleted" and "removed" are mutually exclusive: if either one
+          // was carried forward but the marker is now the other one, drop
+          // the stale one before pushing the current state.
+          const stale = newState === "deleted" ? "removed" : "deleted";
+          const staleIdx = statuses.indexOf(stale);
+          if (staleIdx >= 0) statuses.splice(staleIdx, 1);
+          statuses.push(newState);
         }
         if (prevMerged?.body && !isDeletionMarker(prevMerged.body)) {
           // The merged file already holds a preserved body (either from
           // this run's transition or from a prior run's preservation).
           c.body = prevMerged.body;
           c.body_html = prevMerged.body_html;
-        } else if (!priorWasDeletionMarker) {
+        } else if (!priorState) {
           // No preserved body in the merged file yet, but the prior raw
           // snapshot was pre-deletion, so use that.
           c.body = priorBody;
@@ -836,14 +877,17 @@ export function diffAndMergeComments(
           }
         }
         // else: no preserved body anywhere to fall back on — leave the
-        // fresh "[deleted]" marker in place (first sighting of a comment
-        // that is already deleted).
+        // fresh marker in place (first sighting of a comment that is
+        // already deleted/removed).
       } else if (newBody !== priorBody) {
         // Real edit. Record the prior body in history and mark edited.
-        // Also clear any stale "deleted" status if the comment was
-        // previously deleted and has now been restored (rare mod action).
-        const idx = statuses.indexOf("deleted");
-        if (idx >= 0) statuses.splice(idx, 1);
+        // Also clear any stale terminal status if the comment was
+        // previously deleted/removed and has now been restored (rare mod
+        // action — e.g. a mod un-removes a comment).
+        for (const stale of ["deleted", "removed"] as const) {
+          const idx = statuses.indexOf(stale);
+          if (idx >= 0) statuses.splice(idx, 1);
+        }
         statuses.push("edited");
         if (priorTs) {
           history.push({
@@ -970,7 +1014,10 @@ export function parsePostSnapshotXml(xml: string): ParsedPostSnapshot {
     ? (changeStatusRaw
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => s === "new" || s === "edited" || s === "deleted") as ChangeStatus[])
+        .filter(
+          (s) =>
+            s === "new" || s === "edited" || s === "deleted" || s === "removed"
+        ) as ChangeStatus[])
     : [];
 
   const editHistory: Array<{ timestamp: string; title: string; selftext: string }> = [];
@@ -1047,42 +1094,47 @@ export function diffAndMergePost(
     const prevSelftext = prev.selftext;
     const prevAuthor = prev.author;
 
-    const newIsDeletionMarker =
-      isDeletionMarker(newSelftext) ||
-      newAuthor === "[deleted]" ||
-      newAuthor === "[removed]";
-    const prevWasDeletionMarker =
-      isDeletionMarker(prevSelftext) ||
-      prevAuthor === "[deleted]" ||
-      prevAuthor === "[removed]";
+    const newState = postDeletionState(newSelftext, newAuthor);
+    const prevState = postDeletionState(prevSelftext, prevAuthor);
 
-    if (newIsDeletionMarker) {
-      // Record the "deleted" transition on the first sighting, but ALWAYS
-      // restore the last-known pre-deletion body so a post that stays
-      // deleted across multiple runs doesn't have its preserved text
-      // overwritten with "[deleted]" after the first transition run.
-      if (!prevWasDeletionMarker) {
-        statuses.push("deleted");
+    if (newState) {
+      // Record the terminal transition the first time we see it — or when
+      // the specific marker flipped (deleted ↔ removed) — and ALWAYS
+      // restore the last-known pre-deletion body so a post that stays in
+      // a terminal state across multiple runs doesn't have its preserved
+      // text overwritten with "[deleted]"/"[removed]" after the first
+      // transition run.
+      if (newState !== prevState) {
+        // "deleted" and "removed" are mutually exclusive: if either one
+        // was carried forward but the marker is now the other one, drop
+        // the stale one before pushing the current state.
+        const stale = newState === "deleted" ? "removed" : "deleted";
+        const staleIdx = statuses.indexOf(stale);
+        if (staleIdx >= 0) statuses.splice(staleIdx, 1);
+        statuses.push(newState);
       }
       // Prefer the merged file's effective body (which may itself reflect
       // an earlier recovery) over the raw snapshot.
       const mergedBodyLooksDeleted =
         !prevMerged ||
-        isDeletionMarker(prevMerged.selftext) ||
+        postDeletionState(prevMerged.selftext, prevMerged.author) !== null ||
         prevMerged.selftext === "";
       if (!mergedBodyLooksDeleted) {
         effectiveTitle = prevMerged!.title;
         effectiveSelftext = prevMerged!.selftext;
-      } else if (!prevWasDeletionMarker) {
+      } else if (!prevState) {
         effectiveTitle = prev.title;
         effectiveSelftext = prev.selftext;
       }
       // else: no preserved body anywhere — fall through with the fresh
       // values (first sighting of a post that is already deleted).
     } else if (newTitle !== prevTitle || newSelftext !== prevSelftext) {
-      // Real edit.
-      const deletedIdx = statuses.indexOf("deleted");
-      if (deletedIdx >= 0) statuses.splice(deletedIdx, 1);
+      // Real edit. Clear any stale terminal status if the post was
+      // previously deleted/removed and has now been restored.
+      for (const stale of ["deleted", "removed"] as const) {
+        const idx = statuses.indexOf(stale);
+        if (idx >= 0) statuses.splice(idx, 1);
+      }
       statuses.push("edited");
       if (priorTs) {
         history.push({
