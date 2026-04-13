@@ -1965,7 +1965,11 @@
   border-color: oklch(0.65 0.17 75 / 0.4);
 }
 
-.reddit-chip--deleted {
+/* "deleted" (user-initiated) and "removed" (mod-initiated) are mutually
+   exclusive terminal states. They share the same red palette \u2014 only the
+   chip label distinguishes them. */
+.reddit-chip--deleted,
+.reddit-chip--removed {
   background: oklch(0.55 0.22 25 / 0.2);
   color: oklch(0.7 0.22 25);
   border-color: oklch(0.55 0.22 25 / 0.4);
@@ -2110,7 +2114,7 @@
       const changeStatusRaw = text("change_status");
       if (changeStatusRaw) {
         const parts = changeStatusRaw.split(",").map((s) => s.trim()).filter(
-          (s) => s === "new" || s === "edited" || s === "deleted"
+          (s) => s === "new" || s === "edited" || s === "deleted" || s === "removed"
         );
         if (parts.length > 0) changeStatus = parts;
       }
@@ -3408,9 +3412,10 @@
   var CHIP_LABELS = {
     new: "NEW",
     edited: "EDITED",
-    deleted: "DELETED"
+    deleted: "DELETED",
+    removed: "REMOVED"
   };
-  var CHIP_ORDER = ["new", "edited", "deleted"];
+  var CHIP_ORDER = ["new", "edited", "deleted", "removed"];
   function makeChangeChip(status) {
     const chip = document.createElement("span");
     chip.className = `reddit-chip reddit-chip--${status}`;
@@ -3532,7 +3537,7 @@
     const el = document.createElement("div");
     el.className = "reddit-comment";
     const status = comment.changeStatus ?? [];
-    if (status.includes("deleted")) {
+    if (status.includes("deleted") || status.includes("removed")) {
       el.classList.add("reddit-comment--deleted");
     } else if (status.includes("new")) {
       el.classList.add("reddit-comment--new");
@@ -3717,9 +3722,10 @@
   var POST_CHIP_LABELS = {
     new: "NEW",
     edited: "EDITED",
-    deleted: "DELETED"
+    deleted: "DELETED",
+    removed: "REMOVED"
   };
-  var POST_CHIP_ORDER = ["new", "edited", "deleted"];
+  var POST_CHIP_ORDER = ["new", "edited", "deleted", "removed"];
   function postChipHtml(status) {
     return `<span class="reddit-chip reddit-chip--${status}">${POST_CHIP_LABELS[status]}</span>`;
   }
@@ -3854,7 +3860,7 @@
     const title = metadata?.title || postPath.split("/").pop() || "Post";
     const scoreClass = metadata ? metadata.score > 0 ? "reddit-score-up" : metadata.score < 0 ? "reddit-score-down" : "reddit-score-neutral" : "reddit-score-neutral";
     const postStatus = metadata?.changeStatus ?? [];
-    const postWrapperClass = postStatus.includes("deleted") ? " reddit-post--deleted" : postStatus.includes("new") ? " reddit-post--new" : "";
+    const postWrapperClass = postStatus.includes("deleted") || postStatus.includes("removed") ? " reddit-post--deleted" : postStatus.includes("new") ? " reddit-post--new" : "";
     let headerHtml = `
     <div class="reddit-post-header">
       <h1 class="reddit-post-title">${escapeHtml4(title)}</h1>

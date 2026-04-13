@@ -52,8 +52,9 @@ const POST_CHIP_LABELS: Record<ChangeStatus, string> = {
   new: "NEW",
   edited: "EDITED",
   deleted: "DELETED",
+  removed: "REMOVED",
 };
-const POST_CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted"];
+const POST_CHIP_ORDER: ChangeStatus[] = ["new", "edited", "deleted", "removed"];
 
 /** Render a chip for the post header. Returns an HTML string (inserted via innerHTML). */
 function postChipHtml(status: ChangeStatus): string {
@@ -238,14 +239,17 @@ export async function renderPostDetail(
         : "reddit-score-neutral"
     : "reddit-score-neutral";
 
-  // Post-level change-tracking background (deleted > new). Applied to the
-  // post wrapper below via the .reddit-post--{status} class.
+  // Post-level change-tracking background (deleted/removed > new). Applied
+  // to the post wrapper below via the .reddit-post--{status} class.
+  // "deleted" and "removed" share the same wrapper class (and therefore the
+  // same red palette) — they are distinguished only by the chip label.
   const postStatus = metadata?.changeStatus ?? [];
-  const postWrapperClass = postStatus.includes("deleted")
-    ? " reddit-post--deleted"
-    : postStatus.includes("new")
-      ? " reddit-post--new"
-      : "";
+  const postWrapperClass =
+    postStatus.includes("deleted") || postStatus.includes("removed")
+      ? " reddit-post--deleted"
+      : postStatus.includes("new")
+        ? " reddit-post--new"
+        : "";
 
   // Build header
   let headerHtml = `

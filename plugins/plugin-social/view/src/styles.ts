@@ -1960,7 +1960,11 @@ const CSS = `
   border-color: oklch(0.65 0.17 75 / 0.4);
 }
 
-.reddit-chip--deleted {
+/* "deleted" (user-initiated) and "removed" (mod-initiated) are mutually
+   exclusive terminal states. They share the same red palette — only the
+   chip label distinguishes them. */
+.reddit-chip--deleted,
+.reddit-chip--removed {
   background: oklch(0.55 0.22 25 / 0.2);
   color: oklch(0.7 0.22 25);
   border-color: oklch(0.55 0.22 25 / 0.4);

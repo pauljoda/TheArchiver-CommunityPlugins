@@ -131,8 +131,14 @@ export interface MediaItem {
  * diff/merge step in the Reddit downloader when a prior snapshot exists.
  * Multiple statuses can stack on one comment (e.g. a comment that was edited
  * in a previous scan and is now deleted carries both "edited" and "deleted").
+ *
+ * `"deleted"` and `"removed"` are mutually exclusive — a comment can only be
+ * in one terminal state at a time. They correspond to Reddit's `[deleted]`
+ * (user-initiated) and `[removed]` (moderator-initiated) body markers and
+ * render with the same color palette but distinct chip labels so archivists
+ * can tell the difference.
  */
-export type ChangeStatus = "new" | "edited" | "deleted";
+export type ChangeStatus = "new" | "edited" | "deleted" | "removed";
 
 /** A single prior version of a comment body captured during an edit. */
 export interface CommentEditHistoryEntry {

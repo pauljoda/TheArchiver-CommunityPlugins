@@ -53,7 +53,7 @@ function parseNfoXml(xmlText: string): PostMetadata | null {
         .split(",")
         .map((s) => s.trim())
         .filter((s): s is ChangeStatus =>
-          s === "new" || s === "edited" || s === "deleted"
+          s === "new" || s === "edited" || s === "deleted" || s === "removed"
         );
       if (parts.length > 0) changeStatus = parts;
     }
