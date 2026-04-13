@@ -1,6 +1,6 @@
 {
   "name": "plugin-social",
-  "version": "1.12.1",
+  "version": "1.12.2",
   "private": true,
   "scripts": {
     "sync:shared": "node ../../scripts/sync-shared.mjs plugin-social",
