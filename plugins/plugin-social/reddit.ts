@@ -812,20 +812,33 @@ export function diffAndMergeComments(
       const newIsDeletionMarker = isDeletionMarker(newBody);
       const priorWasDeletionMarker = isDeletionMarker(priorBody);
 
-      if (newIsDeletionMarker && !priorWasDeletionMarker) {
-        // Transition INTO deleted state. Mark deleted, substitute the
-        // merged body with the last-known non-deleted text so the view
-        // can still show what was archived.
-        statuses.push("deleted");
-        c.body = prevMerged?.body && !isDeletionMarker(prevMerged.body)
-          ? prevMerged.body
-          : priorBody;
-        if (prevMerged?.body_html && !isDeletionMarker(prevMerged.body)) {
-          c.body_html = prevMerged.body_html;
-        } else if (prevRaw.body_html) {
-          c.body_html = prevRaw.body_html;
+      if (newIsDeletionMarker) {
+        // The fresh fetch shows a deletion marker. Record the "deleted"
+        // transition the first time we see it, and — crucially — ALWAYS
+        // restore the last-known non-deleted body so a comment that stays
+        // deleted across many runs doesn't get overwritten with "[deleted]"
+        // after the first transition run. We never want to lose the
+        // pre-deletion text once we've seen it.
+        if (!priorWasDeletionMarker) {
+          statuses.push("deleted");
         }
-      } else if (!newIsDeletionMarker && newBody !== priorBody) {
+        if (prevMerged?.body && !isDeletionMarker(prevMerged.body)) {
+          // The merged file already holds a preserved body (either from
+          // this run's transition or from a prior run's preservation).
+          c.body = prevMerged.body;
+          c.body_html = prevMerged.body_html;
+        } else if (!priorWasDeletionMarker) {
+          // No preserved body in the merged file yet, but the prior raw
+          // snapshot was pre-deletion, so use that.
+          c.body = priorBody;
+          if (prevRaw.body_html) {
+            c.body_html = prevRaw.body_html;
+          }
+        }
+        // else: no preserved body anywhere to fall back on — leave the
+        // fresh "[deleted]" marker in place (first sighting of a comment
+        // that is already deleted).
+      } else if (newBody !== priorBody) {
         // Real edit. Record the prior body in history and mark edited.
         // Also clear any stale "deleted" status if the comment was
         // previously deleted and has now been restored (rare mod action).
@@ -1043,23 +1056,30 @@ export function diffAndMergePost(
       prevAuthor === "[deleted]" ||
       prevAuthor === "[removed]";
 
-    if (newIsDeletionMarker && !prevWasDeletionMarker) {
-      // Flipped into deleted state. Keep the pre-deletion body visible.
-      statuses.push("deleted");
+    if (newIsDeletionMarker) {
+      // Record the "deleted" transition on the first sighting, but ALWAYS
+      // restore the last-known pre-deletion body so a post that stays
+      // deleted across multiple runs doesn't have its preserved text
+      // overwritten with "[deleted]" after the first transition run.
+      if (!prevWasDeletionMarker) {
+        statuses.push("deleted");
+      }
       // Prefer the merged file's effective body (which may itself reflect
       // an earlier recovery) over the raw snapshot.
       const mergedBodyLooksDeleted =
         !prevMerged ||
         isDeletionMarker(prevMerged.selftext) ||
         prevMerged.selftext === "";
-      effectiveTitle = mergedBodyLooksDeleted ? prev.title : prevMerged!.title;
-      effectiveSelftext = mergedBodyLooksDeleted
-        ? prev.selftext
-        : prevMerged!.selftext;
-    } else if (
-      !newIsDeletionMarker &&
-      (newTitle !== prevTitle || newSelftext !== prevSelftext)
-    ) {
+      if (!mergedBodyLooksDeleted) {
+        effectiveTitle = prevMerged!.title;
+        effectiveSelftext = prevMerged!.selftext;
+      } else if (!prevWasDeletionMarker) {
+        effectiveTitle = prev.title;
+        effectiveSelftext = prev.selftext;
+      }
+      // else: no preserved body anywhere — fall through with the fresh
+      // values (first sighting of a post that is already deleted).
+    } else if (newTitle !== prevTitle || newSelftext !== prevSelftext) {
       // Real edit.
       const deletedIdx = statuses.indexOf("deleted");
       if (deletedIdx >= 0) statuses.splice(deletedIdx, 1);
@@ -1655,10 +1675,18 @@ function buildCommentImageFilename(
  * Extract media references from a single Reddit markdown body (post selftext
  * or comment body). Shared between {@link extractCommentMedia} and
  * {@link downloadSelftextMedia} so both use identical detection rules.
+ *
+ * `mediaMetadata` (post selftext only) resolves Reddit's rich-editor inline
+ * image references — `![img](KEY)` or `![img](KEY "caption")`, where KEY is
+ * a `media_metadata` id rather than a URL. Comments don't expose this map,
+ * but posts authored via the fancy editor use it for every embedded image,
+ * so without resolving these references the downloader would silently drop
+ * all inline selftext media.
  */
 function extractMediaFromBody(
   body: string,
-  sanitize: (s: string) => string
+  sanitize: (s: string) => string,
+  mediaMetadata?: RedditPost["media_metadata"]
 ): Array<{ key: string; url: string; filename: string }> {
   const items: Array<{ key: string; url: string; filename: string }> = [];
   if (!body) return items;
@@ -1678,8 +1706,9 @@ function extractMediaFromBody(
     items.push({ key, url, filename });
   }
 
-  // 2. ![img](URL) markdown syntax — image extensions only
-  const imgRegex = /!\[img\]\((https?:\/\/[^)]+\.(?:jpe?g|png|gif|webp|avif|bmp)(?:\?[^)]*)?)\)/gi;
+  // 2. ![img](URL) markdown syntax — image extensions only. Optional
+  //    `"caption"` suffix is allowed (Reddit's rich editor emits it).
+  const imgRegex = /!\[img\]\((https?:\/\/[^)\s]+\.(?:jpe?g|png|gif|webp|avif|bmp)(?:\?[^)\s]*)?)(?:\s+"[^"]*")?\)/gi;
   while ((match = imgRegex.exec(body)) !== null) {
     const imgUrl = match[1];
     capturedUrls.add(imgUrl);
@@ -1688,12 +1717,38 @@ function extractMediaFromBody(
     items.push({ key, url: imgUrl, filename });
   }
 
-  // 3. Raw http(s) URLs (auto-linked by Reddit, not wrapped in markdown).
+  // 3. ![img](KEY) / ![gif](KEY) / ![img](KEY "caption") where KEY is a
+  //    Reddit `media_metadata` id. This is the post-selftext format used
+  //    whenever a user embeds an image via the rich editor. The real URL
+  //    lives under `media_metadata[KEY].s.{u,gif}` and often contains
+  //    HTML-encoded `&amp;` that we decode before downloading.
+  if (mediaMetadata) {
+    const metaRegex = /!\[(?:img|gif)\]\(([A-Za-z0-9_-]+)(?:\s+"[^"]*")?\)/g;
+    while ((match = metaRegex.exec(body)) !== null) {
+      const metaKey = match[1];
+      const meta = mediaMetadata[metaKey];
+      if (!meta || meta.status !== "valid") continue;
+      const rawUrl = meta.s.gif || meta.s.u;
+      if (!rawUrl) continue;
+      const url = rawUrl.replace(/&amp;/g, "&");
+      const key = `img:${metaKey}`;
+      // De-dupe: if we already captured this exact KEY (shouldn't happen in
+      // practice, but safe) skip it. Also skip if the raw URL got queued
+      // by branch 2 above (extremely unlikely since branch 2 requires http).
+      if (items.some((i) => i.key === key)) continue;
+      capturedUrls.add(url);
+      const filename = buildCommentImageFilename(url, sanitize);
+      items.push({ key, url, filename });
+    }
+  }
+
+  // 4. Raw http(s) URLs (auto-linked by Reddit, not wrapped in markdown).
   // Strip the markdown image/gif syntax first so we don't re-match URLs
   // embedded inside `![img](...)`.
   const bodyForRawScan = body
     .replace(giphyRegex, "")
-    .replace(/!\[img\]\([^)]+\)/g, "");
+    .replace(/!\[img\]\([^)]+\)/g, "")
+    .replace(/!\[gif\]\([^)]+\)/g, "");
 
   const rawUrlRegex = /https?:\/\/[^\s<>"'`\]\)]+/g;
   let rawMatch: RegExpExecArray | null;
@@ -1840,9 +1895,14 @@ async function downloadSelftextMedia(
   postDir: string,
   helpers: DownloadContext["helpers"],
   maxThreads: number,
-  logger: PluginLogger
+  logger: PluginLogger,
+  mediaMetadata?: RedditPost["media_metadata"]
 ): Promise<Record<string, string>> {
-  const mediaItems = extractMediaFromBody(selftext, helpers.string.sanitizeFilename);
+  const mediaItems = extractMediaFromBody(
+    selftext,
+    helpers.string.sanitizeFilename,
+    mediaMetadata
+  );
   if (mediaItems.length === 0) return {};
 
   const mediaDir = path.join(postDir, "post_media");
@@ -2179,7 +2239,8 @@ async function downloadPostToFolder(
       postDir,
       helpers,
       context.maxDownloadThreads,
-      logger
+      logger,
+      post.media_metadata
     );
     writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp, selftextMedia);
     // Video posts don't carry an external media URL, but call the helper
@@ -2213,7 +2274,8 @@ async function downloadPostToFolder(
     postDir,
     helpers,
     context.maxDownloadThreads,
-    logger
+    logger,
+    post.media_metadata
   );
 
   // Always save metadata (Post.nfo) — this is the post's primary record
@@ -2319,7 +2381,8 @@ async function handleSinglePost(
     postDir,
     helpers,
     context.maxDownloadThreads,
-    logger
+    logger,
+    post.media_metadata
   );
   writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, undefined, runTimestamp, selftextMedia);
 
