@@ -3479,10 +3479,13 @@
       } else if (key.startsWith("img:")) {
         const imgUrl = key.replace("img:", "");
         const escaped = imgUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const markdownPattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
+        const markdownPattern = new RegExp(
+          `!\\[(?:img|gif)\\]\\(${escaped}(?:\\s+"[^"]*")?\\)`,
+          "g"
+        );
         const afterMarkdown = cleanBody.replace(markdownPattern, "");
         if (afterMarkdown !== cleanBody) {
-          cleanBody = afterMarkdown.trim();
+          cleanBody = afterMarkdown.replace(/\n{3,}/g, "\n\n").trim();
         } else {
           const rawPattern = new RegExp(`[ \\t]*${escaped}[ \\t]*`, "g");
           cleanBody = cleanBody.replace(rawPattern, " ");

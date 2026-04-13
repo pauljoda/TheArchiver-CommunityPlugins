@@ -155,13 +155,20 @@ export function buildBodyMedia(
     } else if (key.startsWith("img:")) {
       const imgUrl = key.replace("img:", "");
       const escaped = imgUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Prefer markdown-syntax strip. If the body didn't use markdown form
-      // (e.g. a plain preview.redd.it URL auto-linked by Reddit), strip the
-      // raw URL instead and collapse any surrounding whitespace/newlines.
-      const markdownPattern = new RegExp(`!\\[img\\]\\(${escaped}\\)`, "g");
+      // Prefer markdown-syntax strip. We accept both `![img](X)` and
+      // `![gif](X)` (post selftext via the rich editor uses either prefix
+      // for inline media_metadata references), and allow an optional
+      // `"caption"` suffix which Reddit emits for captioned uploads.
+      // If the body didn't use markdown form (e.g. a plain preview.redd.it
+      // URL auto-linked by Reddit), strip the raw URL instead and collapse
+      // any surrounding whitespace/newlines.
+      const markdownPattern = new RegExp(
+        `!\\[(?:img|gif)\\]\\(${escaped}(?:\\s+"[^"]*")?\\)`,
+        "g"
+      );
       const afterMarkdown = cleanBody.replace(markdownPattern, "");
       if (afterMarkdown !== cleanBody) {
-        cleanBody = afterMarkdown.trim();
+        cleanBody = afterMarkdown.replace(/\n{3,}/g, "\n\n").trim();
       } else {
         const rawPattern = new RegExp(`[ \\t]*${escaped}[ \\t]*`, "g");
         cleanBody = cleanBody.replace(rawPattern, " ");
