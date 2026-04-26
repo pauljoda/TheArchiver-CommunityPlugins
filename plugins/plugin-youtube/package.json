@@ -1,6 +1,6 @@
 {
   "name": "plugin-youtube",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "private": true,
   "scripts": {
     "test:cookie-rules": "tsc && node --test dist/tests/cookie-rules.test.js",

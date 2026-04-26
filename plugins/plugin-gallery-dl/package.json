@@ -1,6 +1,6 @@
 {
   "name": "plugin-gallery-dl",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "scripts": {
     "sync:shared": "node ../../scripts/sync-shared.mjs plugin-gallery-dl",
