@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "declaration": false
   },
-  "include": ["index.ts", "sites.ts", "settings.ts", "manifest-gen.ts"],
+  "include": ["index.ts", "sites.ts", "settings.ts", "manifest-gen.ts", "cookie-rules.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist", "view"]
 }

@@ -4,7 +4,7 @@ import { siteOptions } from "./sites";
 
 interface PluginSettingDefinition {
   key: string;
-  type: "string" | "number" | "boolean" | "password" | "select" | "action" | "site-directory-map" | "file";
+  type: "string" | "number" | "boolean" | "password" | "select" | "action" | "site-directory-map" | "site-file-map" | "file";
   label: string;
   description?: string;
   defaultValue?: string | number | boolean;
@@ -97,10 +97,10 @@ export const pluginSettings: PluginSettingDefinition[] = [
   {
     key: "cookies_file",
     type: "file",
-    label: "Cookies File",
+    label: "Global Cookies File",
     description:
       "Upload a Netscape-format cookies.txt file for authenticated downloads " +
-      "(age-restricted, members-only, or private content). " +
+      "(age-restricted, members-only, or private content). This file is used for all sites unless a per-site cookies file matches. " +
       "To export cookies from your browser: " +
       'Chrome — use the "Get cookies.txt LOCALLY" extension. ' +
       'Firefox — use the "cookies.txt" extension. ' +
@@ -113,6 +113,20 @@ export const pluginSettings: PluginSettingDefinition[] = [
     },
   },
   {
+    key: "site_cookies",
+    type: "site-file-map",
+    label: "Per-Site Cookies Files",
+    description:
+      "Assign cookies.txt files to specific sites. A matching site-specific file is used instead of the global cookies file.",
+    required: false,
+    sortOrder: 7,
+    validation: {
+      options: siteOptions,
+      accept: ".txt",
+      maxSize: 5242880,
+    },
+  },
+  {
     key: "sponsor_block",
     type: "boolean",
     label: "SponsorBlock",
@@ -120,7 +134,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
       "Mark or remove sponsored segments using SponsorBlock data (YouTube only)",
     required: false,
     defaultValue: false,
-    sortOrder: 7,
+    sortOrder: 8,
   },
   {
     key: "extra_args",
@@ -129,6 +143,6 @@ export const pluginSettings: PluginSettingDefinition[] = [
     description:
       "Additional command-line arguments passed to yt-dlp (advanced)",
     required: false,
-    sortOrder: 8,
+    sortOrder: 9,
   },
 ];

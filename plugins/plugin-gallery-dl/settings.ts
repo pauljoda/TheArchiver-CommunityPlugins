@@ -4,7 +4,7 @@ import { siteOptions } from "./sites";
 
 interface PluginSettingDefinition {
   key: string;
-  type: "string" | "number" | "boolean" | "password" | "select" | "action" | "site-directory-map" | "file";
+  type: "string" | "number" | "boolean" | "password" | "select" | "action" | "site-directory-map" | "site-file-map" | "file";
   label: string;
   description?: string;
   defaultValue?: string | number | boolean;
@@ -88,6 +88,21 @@ export const pluginSettings: PluginSettingDefinition[] = [
     },
   },
   {
+    key: "site_cookies",
+    type: "site-file-map",
+    label: "🍪 Per-Site Cookies Files",
+    description:
+      "Assign cookies.txt files to specific sites. A matching site-specific file is used instead of the global cookies file.",
+    required: false,
+    section: "Cookie Authentication",
+    sortOrder: 11,
+    validation: {
+      options: siteOptions,
+      accept: ".txt",
+      maxSize: 10485760,
+    },
+  },
+  {
     key: "cookies_from_browser",
     type: "select",
     label: "🍪 Extract Cookies from Browser",
@@ -97,7 +112,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
       "The browser must be closed for this to work reliably on some systems.",
     required: false,
     section: "Cookie Authentication",
-    sortOrder: 11,
+    sortOrder: 12,
     defaultValue: "none",
     validation: {
       options: [
@@ -123,7 +138,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
       "Example: 'Profile 1' for Chrome, or your Firefox profile name.",
     required: false,
     section: "Cookie Authentication",
-    sortOrder: 12,
+    sortOrder: 13,
   },
   {
     key: "cookies_browser_domain",
@@ -135,7 +150,7 @@ export const pluginSettings: PluginSettingDefinition[] = [
       "Useful for limiting which cookies are sent to gallery-dl.",
     required: false,
     section: "Cookie Authentication",
-    sortOrder: 13,
+    sortOrder: 14,
   },
 
   // ═══════════════════════════════════════════════════════════════

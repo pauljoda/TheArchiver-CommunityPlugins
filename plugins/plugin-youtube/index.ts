@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import { urlPatterns } from "./sites";
 import { pluginSettings } from "./settings";
+import { resolveCookieFileForUrl } from "./cookie-rules";
 import type {
   DownloadResult,
   PluginSettingsAccessor,
@@ -280,8 +281,7 @@ const plugin = definePlugin({
     const audioOnly = settings.get("audio_only") === "true";
     const embedMetadata = settings.get("embed_metadata") !== "false"; // default true
     const embedSubtitles = settings.get("embed_subtitles") === "true";
-    const rawCookies = settings.get("cookies_file");
-    const cookiesFile = rawCookies && rawCookies !== "null" ? rawCookies : "";
+    const cookiesFile = resolveCookieFileForUrl(settings, url, logger);
     const sponsorBlock = settings.get("sponsor_block") === "true";
     const rawExtraArgs = settings.get("extra_args");
     const extraArgs = rawExtraArgs && rawExtraArgs !== "null" ? rawExtraArgs : "";

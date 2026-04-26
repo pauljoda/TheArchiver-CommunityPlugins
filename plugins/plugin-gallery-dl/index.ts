@@ -7,6 +7,7 @@ import {
   runGalleryDl,
   checkGalleryDlAvailable,
 } from "./_shared/runtime/gallery-dl-runner";
+import { resolveCookieFileForUrl } from "./cookie-rules";
 import type {
   DownloadResult,
   PluginSettingsAccessor,
@@ -91,6 +92,7 @@ function getBaseFolder(settings: PluginSettingsAccessor): string {
  */
 function buildConfig(
   settings: PluginSettingsAccessor,
+  url: string,
   outputDir: string,
   logger: PluginLogger
 ): Record<string, unknown> {
@@ -166,7 +168,7 @@ function buildConfig(
   extractor["verify"] = verifySsl;
 
   // ── Cookies ──
-  const cookiesFile = getSetting(settings, "cookies_file");
+  const cookiesFile = resolveCookieFileForUrl(settings, url, logger);
   const cookiesBrowser = getSetting(settings, "cookies_from_browser");
 
   if (cookiesBrowser) {
@@ -890,7 +892,7 @@ const plugin = definePlugin({
     }
 
     // ── Build configuration ──
-    const generatedConfig = buildConfig(settings, outputDir, logger);
+    const generatedConfig = buildConfig(settings, url, outputDir, logger);
 
     // Merge with custom config if provided
     const customConfigPath = getSetting(settings, "custom_config");

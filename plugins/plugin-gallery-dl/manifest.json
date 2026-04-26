@@ -898,13 +898,396 @@
       }
     },
     {
+      "key": "site_cookies",
+      "type": "site-file-map",
+      "label": "🍪 Per-Site Cookies Files",
+      "description": "Assign cookies.txt files to specific sites. A matching site-specific file is used instead of the global cookies file.",
+      "required": false,
+      "section": "Cookie Authentication",
+      "sortOrder": 11,
+      "validation": {
+        "options": [
+          {
+            "label": "Instagram",
+            "value": "instagram.com"
+          },
+          {
+            "label": "Facebook",
+            "value": "facebook.com"
+          },
+          {
+            "label": "TikTok",
+            "value": "tiktok.com"
+          },
+          {
+            "label": "Pinterest",
+            "value": "pinterest.com"
+          },
+          {
+            "label": "Tumblr",
+            "value": "tumblr.com"
+          },
+          {
+            "label": "Mastodon",
+            "value": "mastodon.social"
+          },
+          {
+            "label": "Weibo",
+            "value": "weibo.com"
+          },
+          {
+            "label": "VK",
+            "value": "vk.com"
+          },
+          {
+            "label": "Pixiv",
+            "value": "pixiv.net"
+          },
+          {
+            "label": "DeviantArt",
+            "value": "deviantart.com"
+          },
+          {
+            "label": "ArtStation",
+            "value": "artstation.com"
+          },
+          {
+            "label": "Newgrounds",
+            "value": "newgrounds.com"
+          },
+          {
+            "label": "Fur Affinity",
+            "value": "furaffinity.net"
+          },
+          {
+            "label": "Inkbunny",
+            "value": "inkbunny.net"
+          },
+          {
+            "label": "Weasyl",
+            "value": "weasyl.com"
+          },
+          {
+            "label": "Itaku",
+            "value": "itaku.ee"
+          },
+          {
+            "label": "Behance",
+            "value": "behance.net"
+          },
+          {
+            "label": "500px",
+            "value": "500px.com"
+          },
+          {
+            "label": "Flickr",
+            "value": "flickr.com"
+          },
+          {
+            "label": "VSCO",
+            "value": "vsco.co"
+          },
+          {
+            "label": "Unsplash",
+            "value": "unsplash.com"
+          },
+          {
+            "label": "WikiArt",
+            "value": "wikiart.org"
+          },
+          {
+            "label": "SmugMug",
+            "value": "smugmug.com"
+          },
+          {
+            "label": "Skeb",
+            "value": "skeb.jp"
+          },
+          {
+            "label": "Poipiku",
+            "value": "poipiku.com"
+          },
+          {
+            "label": "Patreon",
+            "value": "patreon.com"
+          },
+          {
+            "label": "Fanbox (pixivFANBOX)",
+            "value": "fanbox.cc"
+          },
+          {
+            "label": "Fantia",
+            "value": "fantia.jp"
+          },
+          {
+            "label": "Kemono",
+            "value": "kemono.su"
+          },
+          {
+            "label": "Coomer",
+            "value": "coomer.su"
+          },
+          {
+            "label": "Boosty",
+            "value": "boosty.to"
+          },
+          {
+            "label": "SubscribeStar",
+            "value": "subscribestar.com"
+          },
+          {
+            "label": "Fansly",
+            "value": "fansly.com"
+          },
+          {
+            "label": "Ci-en",
+            "value": "ci-en.net"
+          },
+          {
+            "label": "Gumroad",
+            "value": "gumroad.com"
+          },
+          {
+            "label": "Danbooru",
+            "value": "danbooru.donmai.us"
+          },
+          {
+            "label": "Gelbooru",
+            "value": "gelbooru.com"
+          },
+          {
+            "label": "Safebooru",
+            "value": "safebooru.org"
+          },
+          {
+            "label": "Rule34.xxx",
+            "value": "rule34.xxx"
+          },
+          {
+            "label": "Rule34.paheal",
+            "value": "rule34.paheal.net"
+          },
+          {
+            "label": "Sankaku Channel",
+            "value": "sankakucomplex.com"
+          },
+          {
+            "label": "Yande.re",
+            "value": "yande.re"
+          },
+          {
+            "label": "Konachan",
+            "value": "konachan.com"
+          },
+          {
+            "label": "e621",
+            "value": "e621.net"
+          },
+          {
+            "label": "Zerochan",
+            "value": "zerochan.net"
+          },
+          {
+            "label": "Derpibooru",
+            "value": "derpibooru.org"
+          },
+          {
+            "label": "Realbooru",
+            "value": "realbooru.com"
+          },
+          {
+            "label": "MangaDex",
+            "value": "mangadex.org"
+          },
+          {
+            "label": "MangaPark",
+            "value": "mangapark.net"
+          },
+          {
+            "label": "MangaReader",
+            "value": "mangareader.to"
+          },
+          {
+            "label": "Comick",
+            "value": "comick.io"
+          },
+          {
+            "label": "Dynasty Scans",
+            "value": "dynasty-scans.com"
+          },
+          {
+            "label": "WEBTOON",
+            "value": "webtoons.com"
+          },
+          {
+            "label": "Tapas",
+            "value": "tapas.io"
+          },
+          {
+            "label": "Bato.to",
+            "value": "bato.to"
+          },
+          {
+            "label": "MangaFire",
+            "value": "mangafire.to"
+          },
+          {
+            "label": "ExHentai",
+            "value": "exhentai.org"
+          },
+          {
+            "label": "E-Hentai",
+            "value": "e-hentai.org"
+          },
+          {
+            "label": "nhentai",
+            "value": "nhentai.net"
+          },
+          {
+            "label": "Hitomi.la",
+            "value": "hitomi.la"
+          },
+          {
+            "label": "IMHentai",
+            "value": "imhentai.xxx"
+          },
+          {
+            "label": "HentaiFox",
+            "value": "hentaifox.com"
+          },
+          {
+            "label": "HentaiEnvy",
+            "value": "hentaienvy.com"
+          },
+          {
+            "label": "HentaiZap",
+            "value": "hentaizap.com"
+          },
+          {
+            "label": "HentaiHere",
+            "value": "hentaihere.com"
+          },
+          {
+            "label": "My Hentai Gallery",
+            "value": "myhentaigallery.com"
+          },
+          {
+            "label": "HentaiEra",
+            "value": "hentaiera.com"
+          },
+          {
+            "label": "HentaiRox",
+            "value": "hentairox.com"
+          },
+          {
+            "label": "Luscious",
+            "value": "luscious.net"
+          },
+          {
+            "label": "EroMe",
+            "value": "erome.com"
+          },
+          {
+            "label": "RedGIFs",
+            "value": "redgifs.com"
+          },
+          {
+            "label": "HentaiFoundry",
+            "value": "hentai-foundry.com"
+          },
+          {
+            "label": "Nijie",
+            "value": "nijie.info"
+          },
+          {
+            "label": "8Muses",
+            "value": "8muses.com"
+          },
+          {
+            "label": "Imgur",
+            "value": "imgur.com"
+          },
+          {
+            "label": "ImageFap",
+            "value": "imagefap.com"
+          },
+          {
+            "label": "imgbox",
+            "value": "imgbox.com"
+          },
+          {
+            "label": "Catbox",
+            "value": "catbox.moe"
+          },
+          {
+            "label": "Pixeldrain",
+            "value": "pixeldrain.com"
+          },
+          {
+            "label": "Cyberdrop",
+            "value": "cyberdrop.me"
+          },
+          {
+            "label": "Bunkr",
+            "value": "bunkr.si"
+          },
+          {
+            "label": "Gofile",
+            "value": "gofile.io"
+          },
+          {
+            "label": "PostImages",
+            "value": "postimg.cc"
+          },
+          {
+            "label": "4chan",
+            "value": "4chan.org"
+          },
+          {
+            "label": "8kun",
+            "value": "8kun.top"
+          },
+          {
+            "label": "Archived.moe",
+            "value": "archived.moe"
+          },
+          {
+            "label": "Desuarchive",
+            "value": "desuarchive.org"
+          },
+          {
+            "label": "4plebs",
+            "value": "4plebs.org"
+          },
+          {
+            "label": "Wallhaven",
+            "value": "wallhaven.cc"
+          },
+          {
+            "label": "Civitai",
+            "value": "civitai.com"
+          },
+          {
+            "label": "Discord",
+            "value": "discord.com"
+          },
+          {
+            "label": "Blogger/Blogspot",
+            "value": "blogspot.com"
+          }
+        ],
+        "accept": ".txt",
+        "maxSize": 10485760
+      }
+    },
+    {
       "key": "cookies_from_browser",
       "type": "select",
       "label": "🍪 Extract Cookies from Browser",
       "description": "Automatically extract cookies from an installed browser instead of a file. gallery-dl will read cookies directly from the browser's cookie store. The browser must be closed for this to work reliably on some systems.",
       "required": false,
       "section": "Cookie Authentication",
-      "sortOrder": 11,
+      "sortOrder": 12,
       "defaultValue": "none",
       "validation": {
         "options": [
@@ -954,7 +1337,7 @@
       "description": "If you use multiple browser profiles, specify the profile name here. Leave blank to use the default profile. Example: 'Profile 1' for Chrome, or your Firefox profile name.",
       "required": false,
       "section": "Cookie Authentication",
-      "sortOrder": 12
+      "sortOrder": 13
     },
     {
       "key": "cookies_browser_domain",
@@ -963,7 +1346,7 @@
       "description": "Only extract cookies for this domain (e.g., '.instagram.com'). Leave blank to extract all cookies from the browser. Useful for limiting which cookies are sent to gallery-dl.",
       "required": false,
       "section": "Cookie Authentication",
-      "sortOrder": 13
+      "sortOrder": 14
     },
     {
       "key": "pixiv_refresh_token",

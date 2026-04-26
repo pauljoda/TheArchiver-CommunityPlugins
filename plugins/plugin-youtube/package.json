@@ -3,10 +3,11 @@
   "version": "2.1.3",
   "private": true,
   "scripts": {
+    "test:cookie-rules": "tsc && node --test dist/tests/cookie-rules.test.js",
     "build": "tsc && node dist/manifest-gen.js && node view/build.js",
     "build:view": "node view/build.js",
-    "deploy": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-youtube/view && cp dist/index.js dist/sites.js dist/settings.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-youtube/ && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-youtube/view/ && cp -r yt-dlp-plugins $HOME/Dev/TheArchiver/plugins/plugin-youtube/",
-    "package": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p dist/package/view && cp dist/index.js dist/sites.js dist/settings.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
+    "deploy": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p $HOME/Dev/TheArchiver/plugins/plugin-youtube/view && cp dist/index.js dist/sites.js dist/settings.js dist/cookie-rules.js manifest.json $HOME/Dev/TheArchiver/plugins/plugin-youtube/ && cp view/index.js $HOME/Dev/TheArchiver/plugins/plugin-youtube/view/ && cp -r yt-dlp-plugins $HOME/Dev/TheArchiver/plugins/plugin-youtube/",
+    "package": "tsc && node dist/manifest-gen.js && node view/build.js && mkdir -p dist/package/view && cp dist/index.js dist/sites.js dist/settings.js dist/cookie-rules.js manifest.json dist/package/ && cp view/index.js dist/package/view/ && cp -r yt-dlp-plugins dist/package/ && cd dist/package && zip -r ../plugin-youtube.zip ."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
