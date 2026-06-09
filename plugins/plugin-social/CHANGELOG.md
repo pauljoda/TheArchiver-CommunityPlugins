@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 1.12.5
+
+- Pass matched Reddit account cookies through upvoted post comment fetches and Reddit-hosted media downloads so authenticated archives do not fall back to unauthenticated requests.
+
 ## 1.12.4
 
 - Skip gallery-dl refreshes for Reddit linked-host media when the post folder already contains archived media for that host, preserving original Imgur downloads if the source later returns a removed-image placeholder.

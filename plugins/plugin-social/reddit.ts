@@ -123,6 +123,12 @@ const USER_AGENT = "TheArchiver/1.0 (reddit content archiver)";
 // Rate-limited fetch function, initialized in downloadReddit() via helpers.http.createRateLimiter()
 let redditFetch: ((url: string, options?: RequestInit & { logger?: PluginLogger }) => Promise<Response>) | null = null;
 
+function authenticatedIoOptions(
+  cookieHeader?: string | null
+): { cookies?: string } | undefined {
+  return cookieHeader ? { cookies: cookieHeader } : undefined;
+}
+
 /**
  * Detect the class of fetch errors that are worth retrying — TCP resets,
  * TLS handshake failures, DNS blips, undici socket errors. These surface as
@@ -322,7 +328,8 @@ async function downloadRedditVideo(
   post: RedditPost,
   postDir: string,
   helpers: DownloadContext["helpers"],
-  logger: PluginLogger
+  logger: PluginLogger,
+  cookieHeader?: string | null
 ): Promise<{ downloaded: boolean; filename: string }> {
   const sourcePost =
     post.crosspost_parent_list && post.crosspost_parent_list.length > 0
@@ -358,7 +365,11 @@ async function downloadRedditVideo(
 
   // Download video stream (use original fallback URL with query params)
   logger.info(`Downloading video stream: ${rv.fallback_url}`);
-  await helpers.io.downloadFile(rv.fallback_url, videoTempPath);
+  await helpers.io.downloadFile(
+    rv.fallback_url,
+    videoTempPath,
+    authenticatedIoOptions(cookieHeader)
+  );
 
   // Try to download audio stream — some videos genuinely have no audio
   // Try both CMAF and DASH naming patterns, with query string for auth
@@ -378,7 +389,11 @@ async function downloadRedditVideo(
     try {
       const audioUrl = `${baseUrl}/${audioFile}${queryString}`;
       logger.info(`Trying audio: ${audioUrl}`);
-      await helpers.io.downloadFile(audioUrl, audioTempPath);
+      await helpers.io.downloadFile(
+        audioUrl,
+        audioTempPath,
+        authenticatedIoOptions(cookieHeader)
+      );
       hasAudio = true;
       break;
     } catch {
@@ -1534,7 +1549,8 @@ async function writePostComments(
   postDir: string,
   logger: PluginLogger,
   context?: DownloadContext,
-  runTimestamp?: string
+  runTimestamp?: string,
+  cookieHeader?: string | null
 ): Promise<void> {
   const commentsPath = path.join(postDir, "Comments.json");
 
@@ -1573,7 +1589,8 @@ async function writePostComments(
         postDir,
         context.helpers,
         context.maxDownloadThreads,
-        logger
+        logger,
+        cookieHeader
       );
     }
 
@@ -1871,7 +1888,8 @@ async function downloadCommentMedia(
   postDir: string,
   helpers: DownloadContext["helpers"],
   maxThreads: number,
-  logger: PluginLogger
+  logger: PluginLogger,
+  cookieHeader?: string | null
 ): Promise<void> {
   const mediaItems = extractCommentMedia(comments, helpers.string.sanitizeFilename);
   if (mediaItems.length === 0) return;
@@ -1901,7 +1919,11 @@ async function downloadCommentMedia(
   if (downloads.length > 0) {
     logger.info(`Downloading ${downloads.length} comment media files...`);
     try {
-      await helpers.io.downloadFiles(downloads, maxThreads);
+      await helpers.io.downloadFiles(
+        downloads,
+        maxThreads,
+        authenticatedIoOptions(cookieHeader)
+      );
     } catch (err) {
       logger.warn(`Some comment media downloads failed: ${err}`);
     }
@@ -1948,7 +1970,8 @@ async function downloadSelftextMedia(
   helpers: DownloadContext["helpers"],
   maxThreads: number,
   logger: PluginLogger,
-  mediaMetadata?: RedditPost["media_metadata"]
+  mediaMetadata?: RedditPost["media_metadata"],
+  cookieHeader?: string | null
 ): Promise<Record<string, string>> {
   const mediaItems = extractMediaFromBody(
     selftext,
@@ -1978,7 +2001,11 @@ async function downloadSelftextMedia(
   if (downloads.length > 0) {
     logger.info(`Downloading ${downloads.length} post selftext media files...`);
     try {
-      await helpers.io.downloadFiles(downloads, maxThreads);
+      await helpers.io.downloadFiles(
+        downloads,
+        maxThreads,
+        authenticatedIoOptions(cookieHeader)
+      );
     } catch (err) {
       logger.warn(`Some post selftext media downloads failed: ${err}`);
     }
@@ -2017,7 +2044,8 @@ async function downloadSelftextMedia(
 async function fetchAndSaveSubredditIcon(
   context: DownloadContext,
   subreddit: string,
-  subredditDir: string
+  subredditDir: string,
+  cookieHeader?: string | null
 ): Promise<void> {
   const { helpers, logger } = context;
 
@@ -2031,7 +2059,7 @@ async function fetchAndSaveSubredditIcon(
 
   try {
     const aboutUrl = `https://www.reddit.com/r/${subreddit}/about.json`;
-    const response = (await rateLimitedFetch(aboutUrl, logger)) as {
+    const response = (await rateLimitedFetch(aboutUrl, logger, cookieHeader)) as {
       data?: {
         community_icon?: string;
         icon_img?: string;
@@ -2057,7 +2085,11 @@ async function fetchAndSaveSubredditIcon(
     const iconPath = path.join(subredditDir, `icon.${ext}`);
 
     await helpers.io.ensureDir(subredditDir);
-    await helpers.io.downloadFile(iconUrl, iconPath);
+    await helpers.io.downloadFile(
+      iconUrl,
+      iconPath,
+      authenticatedIoOptions(cookieHeader)
+    );
     logger.info(`Saved subreddit icon for r/${subreddit}`);
   } catch (err) {
     logger.warn(`Failed to fetch icon for r/${subreddit}: ${err}`);
@@ -2067,7 +2099,8 @@ async function fetchAndSaveSubredditIcon(
 async function fetchAndSaveUserIcon(
   context: DownloadContext,
   username: string,
-  userDir: string
+  userDir: string,
+  cookieHeader?: string | null
 ): Promise<void> {
   const { helpers, logger } = context;
 
@@ -2081,7 +2114,7 @@ async function fetchAndSaveUserIcon(
 
   try {
     const aboutUrl = `https://www.reddit.com/user/${username}/about.json`;
-    const response = (await rateLimitedFetch(aboutUrl, logger)) as {
+    const response = (await rateLimitedFetch(aboutUrl, logger, cookieHeader)) as {
       data?: {
         icon_img?: string;
         snoovatar_img?: string;
@@ -2101,7 +2134,11 @@ async function fetchAndSaveUserIcon(
     const iconPath = path.join(userDir, `icon.${ext}`);
 
     await helpers.io.ensureDir(userDir);
-    await helpers.io.downloadFile(iconUrl, iconPath);
+    await helpers.io.downloadFile(
+      iconUrl,
+      iconPath,
+      authenticatedIoOptions(cookieHeader)
+    );
     logger.info(`Saved user icon for u/${username}`);
   } catch (err) {
     logger.warn(`Failed to fetch icon for u/${username}: ${err}`);
@@ -2306,7 +2343,8 @@ async function downloadPostToFolder(
   sourceUrl: string,
   saveMetadata: boolean,
   fetchComments: boolean,
-  upvotedContext?: UpvotedContext
+  upvotedContext?: UpvotedContext,
+  cookieHeader?: string | null
 ): Promise<{ downloaded: number; skipped: number; isVideo: boolean; metadataSaved: boolean }> {
   const { helpers, logger } = context;
 
@@ -2324,7 +2362,8 @@ async function downloadPostToFolder(
       helpers,
       context.maxDownloadThreads,
       logger,
-      post.media_metadata
+      post.media_metadata,
+      cookieHeader
     );
     writePostNfo(post, sourceUrl, postDir, logger, helpers.string.xmlEscape, upvotedContext, runTimestamp, selftextMedia);
     // Video posts don't carry an external media URL, but call the helper
@@ -2335,16 +2374,17 @@ async function downloadPostToFolder(
         const commentUrl = `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}.json`;
         const commentResponse = (await rateLimitedFetch(
           commentUrl,
-          logger
+          logger,
+          cookieHeader
         )) as unknown[];
         if (Array.isArray(commentResponse) && commentResponse.length >= 2) {
-          await writePostComments(commentResponse[1], postDir, logger, context, runTimestamp);
+          await writePostComments(commentResponse[1], postDir, logger, context, runTimestamp, cookieHeader);
         }
       } catch (err) {
         logger.warn(`Failed to fetch comments for post ${post.id}: ${err}`);
       }
     }
-    const videoResult = await downloadRedditVideo(post, postDir, helpers, logger);
+    const videoResult = await downloadRedditVideo(post, postDir, helpers, logger, cookieHeader);
     return { downloaded: videoResult.downloaded ? 1 : 0, skipped: videoResult.downloaded ? 0 : 1, isVideo: true, metadataSaved: true };
   }
 
@@ -2359,7 +2399,8 @@ async function downloadPostToFolder(
     helpers,
     context.maxDownloadThreads,
     logger,
-    post.media_metadata
+    post.media_metadata,
+    cookieHeader
   );
 
   // Always save metadata (Post.nfo) — this is the post's primary record
@@ -2374,10 +2415,11 @@ async function downloadPostToFolder(
       const commentUrl = `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}.json`;
       const commentResponse = (await rateLimitedFetch(
         commentUrl,
-        logger
+        logger,
+        cookieHeader
       )) as unknown[];
       if (Array.isArray(commentResponse) && commentResponse.length >= 2) {
-        await writePostComments(commentResponse[1], postDir, logger, context, runTimestamp);
+        await writePostComments(commentResponse[1], postDir, logger, context, runTimestamp, cookieHeader);
       }
     } catch (err) {
       logger.warn(`Failed to fetch comments for post ${post.id}: ${err}`);
@@ -2402,7 +2444,11 @@ async function downloadPostToFolder(
   }
 
   if (downloads.length > 0) {
-    await helpers.io.downloadFiles(downloads, context.maxDownloadThreads);
+    await helpers.io.downloadFiles(
+      downloads,
+      context.maxDownloadThreads,
+      authenticatedIoOptions(cookieHeader)
+    );
   }
 
   return { downloaded: downloads.length, skipped, isVideo: false, metadataSaved: true };
@@ -2804,7 +2850,8 @@ async function handleUserUpvoted(
         await fetchAndSaveSubredditIcon(
           context,
           post.subreddit,
-          path.join(rootDirectory, saveDir, redditSubfolder, post.subreddit)
+          path.join(rootDirectory, saveDir, redditSubfolder, post.subreddit),
+          cookieHeader
         );
       } catch (err) {
         // Icon fetch is best-effort; never let it block post archiving.
@@ -2826,7 +2873,8 @@ async function handleUserUpvoted(
         sourceUrl,
         saveMetadata,
         saveMetadata,
-        { archivedAt: runArchivedAt, position: postIndex }
+        { archivedAt: runArchivedAt, position: postIndex },
+        cookieHeader
       );
 
       totalArchived++;
@@ -2846,7 +2894,8 @@ async function handleUserUpvoted(
   await fetchAndSaveUserIcon(
     context,
     username,
-    path.join(rootDirectory, saveDir, redditSubfolder, username)
+    path.join(rootDirectory, saveDir, redditSubfolder, username),
+    cookieHeader
   );
 
   const parts: string[] = [
