@@ -2140,6 +2140,8 @@ const EXTERNAL_MEDIA_HOSTS: Record<string, { prefix: string; site: string }> = {
   "gfycat.com":     { prefix: "gfycat",     site: "gfycat" },
 };
 
+const EXTERNAL_MEDIA_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|avif|mp4|webm|mov|avi|mkv)$/i;
+
 /** Normalize a hostname for allow-list lookup (strips common www./m. prefixes). */
 function normalizeHost(hostname: string): string {
   return hostname
@@ -2210,13 +2212,36 @@ function buildExternalMediaConfig(
   return { extractor };
 }
 
+export async function hasExistingExternalMedia(
+  postDir: string,
+  prefix: string
+): Promise<boolean> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(postDir, { withFileTypes: true });
+  } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+      return false;
+    }
+    throw err;
+  }
+
+  const filenamePrefix = `${prefix}_`;
+  return entries.some(
+    (entry) =>
+      entry.isFile() &&
+      entry.name.startsWith(filenamePrefix) &&
+      EXTERNAL_MEDIA_EXT_RE.test(entry.name)
+  );
+}
+
 /**
  * Opportunistic external-media archive for a single Reddit post. Returns
  * `true` if at least one file was downloaded, `false` otherwise. Never
  * throws — any failure (missing gallery-dl, unsupported URL, timeout,
  * network error) is logged and the call silently returns false.
  */
-async function maybeDownloadExternalMedia(
+export async function maybeDownloadExternalMedia(
   context: DownloadContext,
   post: RedditPost,
   postDir: string
@@ -2229,6 +2254,13 @@ async function maybeDownloadExternalMedia(
 
   try {
     await helpers.io.ensureDir(postDir);
+    if (await hasExistingExternalMedia(postDir, picked.prefix)) {
+      logger.info(
+        `Existing ${picked.site} media already archived for this Reddit post; skipping gallery-dl refresh`
+      );
+      return false;
+    }
+
     const config = buildExternalMediaConfig(postDir, picked.prefix, picked.site);
     const result = await runGalleryDl({
       url: picked.url,

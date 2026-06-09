@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 1.12.4
+
+- Skip gallery-dl refreshes for Reddit linked-host media when the post folder already contains archived media for that host, preserving original Imgur downloads if the source later returns a removed-image placeholder.
+
 ### Changed
 
 - Replace inline type definitions in `shared.ts` with imports from core `plugin-api.d.ts`
