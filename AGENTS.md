@@ -135,5 +135,5 @@ Versions below mirror `plugins.json`; bump them when you release.
 |---|---|---|
 | `plugin-archive-org` | 2.0.2 | Download content from Archive.org |
 | `plugin-gallery-dl` | 2.2.0 | Multi-site image/media downloader (400+ sites) |
-| `plugin-social` | 1.12.5 | Reddit, Bluesky, Twitter/X downloader with Social Browser view |
+| `plugin-social` | 1.12.6 | Reddit, Bluesky, Twitter/X downloader with Social Browser view |
 | `plugin-youtube` | 2.2.0 | yt-dlp wrapper for YouTube, Twitch, TikTok, and 1800+ sites |

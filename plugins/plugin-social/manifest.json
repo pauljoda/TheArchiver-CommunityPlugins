@@ -1,6 +1,6 @@
 {
   "name": "Socials",
-  "version": "1.12.5",
+  "version": "1.12.6",
   "description": "Download images, galleries, and metadata from social media platforms",
   "author": "TheArchiver",
   "urlPatterns": [

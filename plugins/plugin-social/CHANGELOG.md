@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 1.12.6
+
+- Pass matched Reddit account cookies through normal user profile archives so submitted listings, comment fetches, and Reddit-hosted media downloads do not fall back to unauthenticated requests.
+
 ## 1.12.5
 
 - Pass matched Reddit account cookies through upvoted post comment fetches and Reddit-hosted media downloads so authenticated archives do not fall back to unauthenticated requests.

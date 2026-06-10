@@ -302,6 +302,36 @@ async function fetchAllPosts(
   return results.slice(0, effectiveMax);
 }
 
+async function resolveRedditCookieHeaderForUsername(
+  context: DownloadContext,
+  username: string,
+  purpose: string
+): Promise<string | null> {
+  const { settings, logger } = context;
+  const account = findRedditAccountByUsername(settings, username);
+  if (!account) {
+    return null;
+  }
+
+  const resolved = await resolveRedditCookieHeader(
+    account.slot,
+    account.cookiesFile,
+    settings,
+    logger
+  );
+  if (!resolved) {
+    logger.warn(
+      `Reddit account slot ${account.slot} matches u/${username}, but no usable cookies were available for ${purpose}; continuing without cookies`
+    );
+    return null;
+  }
+
+  logger.info(
+    `Using Reddit account slot ${account.slot} cookies from ${resolved.resolvedFrom} for ${purpose} requests`
+  );
+  return resolved.cookieHeader;
+}
+
 // =============================================================================
 // Media Extractor
 // =============================================================================
@@ -2603,9 +2633,15 @@ async function handleUserProfile(
     };
   }
 
+  const cookieHeader = await resolveRedditCookieHeaderForUsername(
+    context,
+    username,
+    `u/${username} profile archive`
+  );
+
   logger.info(`Fetching posts by u/${username}...`);
   const baseUrl = `https://www.reddit.com/user/${username}/submitted.json`;
-  const posts = await fetchAllPosts(baseUrl, postCount, logger);
+  const posts = await fetchAllPosts(baseUrl, postCount, logger, cookieHeader);
 
   if (posts.length === 0) {
     return {
@@ -2644,7 +2680,9 @@ async function handleUserProfile(
         postDir,
         sourceUrl,
         saveMetadata,
-        saveMetadata
+        saveMetadata,
+        undefined,
+        cookieHeader
       );
 
       totalArchived++;
@@ -2661,7 +2699,12 @@ async function handleUserProfile(
   }
 
   // Fetch and save user icon
-  await fetchAndSaveUserIcon(context, username, path.join(rootDirectory, saveDir, redditSubfolder, username));
+  await fetchAndSaveUserIcon(
+    context,
+    username,
+    path.join(rootDirectory, saveDir, redditSubfolder, username),
+    cookieHeader
+  );
 
   const parts: string[] = [
     `u/${username}: Archived ${totalArchived} posts (${totalDownloaded} media files downloaded)`,
