@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 1.12.8
+
+- Bump and republish the Socials plugin so TheArchiver clients detect the Reddit profile archive cookie fix as a new update.
+
 ## 1.12.7
 
 - Publish a fresh Socials update for Reddit profile archives, add explicit 403 guidance when submitted listings run without usable cookies, and verify scheduled profile URLs send matched account cookies.
