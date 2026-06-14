@@ -258,6 +258,7 @@ test("passes matched Reddit account cookies to user profile post and comment fet
     "# Netscape HTTP Cookie File",
     ".reddit.com\tTRUE\t/\tTRUE\t1893456000\treddit_session\tprofile123",
   ].join("\n");
+  const logs: string[] = [];
   const fetchCalls: Array<{ url: string; cookie?: string }> = [];
   const downloadCalls: Array<{ url: string; cookies?: string }> = [];
   const settingsStore = new Map<string, string>([
@@ -271,7 +272,7 @@ test("passes matched Reddit account cookies to user profile post and comment fet
 
   try {
     const context = {
-      url: "https://www.reddit.com/user/alice",
+      url: "https://www.reddit.com/user/alice/",
       rootDirectory,
       maxDownloadThreads: 2,
       settings: {
@@ -281,9 +282,15 @@ test("passes matched Reddit account cookies to user profile post and comment fet
         },
       },
       logger: {
-        info: () => {},
-        warn: () => {},
-        error: () => {},
+        info: (message: string) => {
+          logs.push(message);
+        },
+        warn: (message: string) => {
+          logs.push(message);
+        },
+        error: (message: string) => {
+          logs.push(message);
+        },
       },
       helpers: {
         http: {
@@ -420,6 +427,13 @@ test("passes matched Reddit account cookies to user profile post and comment fet
     const result = await downloadReddit(context);
 
     assert.equal(result.success, true);
+    assert.ok(
+      logs.some((message) =>
+        message.includes(
+          "Using Reddit account slot 1 cookies from setting-blob for u/alice profile archive requests"
+        )
+      )
+    );
     const authenticatedFetches = fetchCalls.filter((call) =>
       call.url.includes("/submitted.json") ||
       call.url.includes("/comments/post2.json")
@@ -428,6 +442,57 @@ test("passes matched Reddit account cookies to user profile post and comment fet
     assert.ok(authenticatedFetches.every((call) => call.cookie === "reddit_session=profile123"));
     assert.ok(downloadCalls.length >= 2);
     assert.ok(downloadCalls.every((call) => call.cookies === "reddit_session=profile123"));
+  } finally {
+    fs.rmSync(rootDirectory, { recursive: true, force: true });
+  }
+});
+
+test("returns profile cookie setup guidance when submitted listing gets a 403 without cookies", async () => {
+  const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-social-reddit-"));
+  const fetchCalls: Array<{ url: string; cookie?: string }> = [];
+  const settingsStore = new Map<string, string>([
+    ["save_directory", "Socials"],
+    ["reddit_subfolder", "Reddit"],
+    ["save_metadata", "true"],
+    ["subreddit_post_count", "1"],
+    ["reddit_account_1_username", "bob"],
+  ]);
+
+  try {
+    const context = {
+      url: "https://www.reddit.com/user/alice/",
+      rootDirectory,
+      maxDownloadThreads: 2,
+      settings: {
+        get: (key: string) => settingsStore.get(key) || "",
+        set: async (key: string, value: string) => {
+          settingsStore.set(key, value);
+        },
+      },
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      helpers: {
+        http: {
+          createRateLimiter: () => async (url: string, options?: RequestInit) => {
+            const cookie = new Headers(options?.headers).get("cookie") || undefined;
+            fetchCalls.push({ url, cookie });
+            return new Response("Blocked", { status: 403, statusText: "Blocked" });
+          },
+        },
+      },
+    } as unknown as DownloadContext;
+
+    const result = await downloadReddit(context);
+
+    assert.equal(result.success, false);
+    assert.match(result.message, /No configured Reddit account matches u\/alice/);
+    assert.match(result.message, /Configured accounts: u\/bob/);
+    assert.equal(fetchCalls.length, 1);
+    assert.ok(fetchCalls[0].url.includes("/submitted.json"));
+    assert.equal(fetchCalls[0].cookie, undefined);
   } finally {
     fs.rmSync(rootDirectory, { recursive: true, force: true });
   }

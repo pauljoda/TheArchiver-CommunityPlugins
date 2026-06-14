@@ -332,6 +332,36 @@ async function resolveRedditCookieHeaderForUsername(
   return resolved.cookieHeader;
 }
 
+function redditProfileCookieSetupMessage(
+  settings: DownloadContext["settings"],
+  username: string
+): string {
+  const account = findRedditAccountByUsername(settings, username);
+  if (!account) {
+    const configured = loadRedditAccountSlots(settings)
+      .map((slot) => redditAccountDisplayName(slot))
+      .filter((name) => name.length > 0);
+    const configuredHint = configured.length
+      ? ` Configured accounts: ${configured.map((name) => `u/${name}`).join(", ")}.`
+      : " No Reddit accounts are configured yet.";
+    return (
+      `No configured Reddit account matches u/${username}. ` +
+      `Open plugin settings -> Reddit Account N, set the username to '${username}', ` +
+      `upload a cookies.txt file, and click 'Test Connection'.` +
+      configuredHint
+    );
+  }
+
+  const hint = account.cookiesFile
+    ? `The configured cookies file (${account.cookiesFile}) is missing or unreadable, and no persisted snapshot is available for slot ${account.slot}.`
+    : `No cookies file is configured for slot ${account.slot} and no persisted snapshot exists.`;
+  return (
+    `Account slot ${account.slot} (u/${redditAccountDisplayName(account)}) has no usable cookies. ` +
+    `${hint} ` +
+    `Re-upload cookies.txt in plugin settings and click Test Connection so Reddit profile archives can use authenticated requests.`
+  );
+}
+
 // =============================================================================
 // Media Extractor
 // =============================================================================
@@ -2641,7 +2671,22 @@ async function handleUserProfile(
 
   logger.info(`Fetching posts by u/${username}...`);
   const baseUrl = `https://www.reddit.com/user/${username}/submitted.json`;
-  const posts = await fetchAllPosts(baseUrl, postCount, logger, cookieHeader);
+  let posts: RedditPost[];
+  try {
+    posts = await fetchAllPosts(baseUrl, postCount, logger, cookieHeader);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("403")) {
+      const authHint = cookieHeader
+        ? `Reddit returned 403 for u/${username}/submitted even though matched account cookies were sent. Re-upload cookies.txt for u/${username}, click Test Connection, and retry the profile archive.`
+        : `Reddit returned 403 for u/${username}/submitted before any posts could be fetched. ${redditProfileCookieSetupMessage(settings, username)}`;
+      return {
+        success: false,
+        message: authHint,
+      };
+    }
+    throw err;
+  }
 
   if (posts.length === 0) {
     return {

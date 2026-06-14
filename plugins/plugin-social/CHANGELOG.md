@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 1.12.7
+
+- Publish a fresh Socials update for Reddit profile archives, add explicit 403 guidance when submitted listings run without usable cookies, and verify scheduled profile URLs send matched account cookies.
+
 ## 1.12.6
 
 - Pass matched Reddit account cookies through normal user profile archives so submitted listings, comment fetches, and Reddit-hosted media downloads do not fall back to unauthenticated requests.
